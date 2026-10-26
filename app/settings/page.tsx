@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { db, clearAll, exportAll, getPatientName, importAll } from "@/lib/db";
-import { Card, primaryBtn, inputCls, useToast } from "@/components/ui";
+import { Card, primaryBtn, secondaryBtn, dangerBtn, inputCls, useToast, PageHeader } from "@/components/ui";
 
 export default function SettingsPage() {
   const [name, setName] = useState("");
@@ -11,7 +11,7 @@ export default function SettingsPage() {
 
   async function saveName() {
     await db.settings.put({ key: "profile", patientName: name.trim() });
-    toast("Saved");
+    toast("Name saved");
   }
   async function doExport() {
     const blob = new Blob([JSON.stringify(await exportAll(), null, 2)], { type: "application/json" });
@@ -34,22 +34,25 @@ export default function SettingsPage() {
 
   return (
     <>
-      <Card title="Profile">
-        <label htmlFor="pname" className="mb-1 block font-semibold">Patient name (shown on reports)</label>
-        <input id="pname" className={`${inputCls} mb-3`} value={name} onChange={(e) => setName(e.target.value)} />
-        <button className={primaryBtn} onClick={saveName}>Save</button>
+      <PageHeader kicker="Private by default" title="Settings" lede="Nothing is uploaded. A backup leaves this device only when you export it." />
+      <Card title="Name on reports">
+        <label htmlFor="pname" className="mb-2 block text-[13px] font-medium text-muted">Patient name</label>
+        <input id="pname" className={`${inputCls} mb-4`} value={name} onChange={(e) => setName(e.target.value)} placeholder="Shown on the clinical summary" />
+        <button className={primaryBtn} onClick={saveName}>Save name</button>
       </Card>
       <Card title="Backup">
-        <p className="mb-3 text-sm text-slate-700">All data stays on this device. Export a JSON backup or restore one (this replaces current data).</p>
-        <button className={`${primaryBtn} mb-2`} onClick={doExport}>Export JSON</button>
-        <input ref={file} type="file" accept="application/json,.json" className="hidden" aria-label="Import JSON file" onChange={(e) => e.target.files?.[0] && doImport(e.target.files[0])} />
-        <button className={`${primaryBtn} mb-2 !bg-slate-800`} onClick={() => file.current?.click()}>Import JSON</button>
-        <button
-          className="w-full rounded-xl border-2 border-red-700 px-4 py-3 font-bold text-red-700"
-          onClick={async () => { if (confirm("Delete ALL data on this device?")) { await clearAll(); setName(""); toast("All data deleted"); } }}
-        >
-          Delete all data
-        </button>
+        <p className="mb-4 text-sm leading-relaxed text-muted">Export a JSON file, or restore one. Restoring replaces everything currently stored here.</p>
+        <div className="flex flex-col gap-2">
+          <button className={primaryBtn} onClick={doExport}>Export JSON</button>
+          <input ref={file} type="file" accept="application/json,.json" className="hidden" aria-label="Import JSON file" onChange={(e) => e.target.files?.[0] && doImport(e.target.files[0])} />
+          <button className={secondaryBtn} onClick={() => file.current?.click()}>Import JSON</button>
+          <button
+            className={dangerBtn}
+            onClick={async () => { if (confirm("Delete ALL data on this device?")) { await clearAll(); setName(""); toast("All data deleted"); } }}
+          >
+            Delete all data
+          </button>
+        </div>
       </Card>
       {toastEl}
     </>

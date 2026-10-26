@@ -6,25 +6,27 @@ import { Line, LineChart, ResponsiveContainer, YAxis } from "recharts";
 import { db, getPatientName } from "@/lib/db";
 import { buildDailySeries, fmt, fmtDate, frequency, inRange, summaryMetrics, treatmentResponse } from "@/lib/analytics";
 import { severity } from "@/lib/scoring";
-import { Segmented, primaryBtn } from "@/components/ui";
+import { Segmented, primaryBtn, PageHeader } from "@/components/ui";
 
 function Bars({ rows }: { rows: { name: string; count: number }[] }) {
   const max = Math.max(1, ...rows.map((r) => r.count));
-  if (!rows.length) return <p className="text-xs">None recorded.</p>;
+  if (!rows.length) return <p className="text-xs text-muted">None recorded.</p>;
   return (
-    <ul className="space-y-0.5">
+    <ul className="space-y-1">
       {rows.slice(0, 5).map((r) => (
         <li key={r.name} className="flex items-center gap-2 text-xs">
           <span className="w-32 shrink-0 truncate">{r.name}</span>
-          <span className="h-2.5 rounded bg-teal-700" style={{ width: `${(r.count / max) * 100}%`, minWidth: 2 }} />
-          <span className="font-semibold">{r.count}</span>
+          <span className="h-1.5 rounded-full bg-forest" style={{ width: `${(r.count / max) * 100}%`, minWidth: 2 }} />
+          <span className="font-medium tabular-nums">{r.count}</span>
         </li>
       ))}
     </ul>
   );
 }
 
-const H = ({ children }: { children: React.ReactNode }) => <h3 className="mb-1 border-b border-slate-400 text-xs font-bold uppercase tracking-wide text-slate-800">{children}</h3>;
+const H = ({ children }: { children: React.ReactNode }) => (
+  <h3 className="mb-1.5 border-b border-ink/15 pb-1 text-[10px] font-medium uppercase tracking-[0.16em] text-ink">{children}</h3>
+);
 
 export default function SummaryPage() {
   const [range, setRange] = useState<"14 days" | "30 days" | "90 days">("30 days");
@@ -58,89 +60,94 @@ export default function SummaryPage() {
 
   return (
     <>
-      <div className="no-print mb-3">
+      <div className="no-print">
+        <PageHeader kicker="For your clinician" title="Summary" lede="One page for a visit. Print it, or save it as a PDF." />
         <Segmented label="Report range" options={["14 days", "30 days", "90 days"] as const} value={range} onChange={setRange} />
-        <button className={`${primaryBtn} flex items-center justify-center gap-2`} onClick={() => window.print()}><Printer size={20} /> Print / Save as PDF</button>
+        <button className={`${primaryBtn} mb-6`} onClick={() => window.print()}><Printer size={16} /> Print or save PDF</button>
       </div>
       {r && end > 0 && (
-        <article className="print-page mx-auto max-w-[210mm] rounded border border-slate-300 bg-white p-4 text-slate-900 shadow-sm">
-          <header className="mb-2 flex flex-wrap items-end justify-between border-b-2 border-slate-900 pb-2">
+        <article className="print-page mx-auto max-w-[210mm] rounded-2xl border border-line bg-white p-5 text-ink shadow-[0_30px_60px_-42px_rgba(22,21,19,0.7)]">
+          <header className="mb-3 flex flex-wrap items-end justify-between gap-2 border-b border-ink pb-2">
             <div>
-              <h2 className="text-lg font-bold">ClinTrack – Clinical Summary</h2>
-              <div className="text-sm">Patient: <b>{name || "________________"}</b></div>
+              <h2 className="font-serif text-2xl italic leading-none">Clinical summary</h2>
+              <div className="mt-1 text-sm">Patient: <b>{name || "________________"}</b></div>
             </div>
-            <div className="text-right text-xs">
-              <div>{fmtDate(start)} – {fmtDate(end)} (Past {days} days)</div>
-              <div>Check-ins: <b>{r.m.total}</b> · Completion: <b>{r.m.completion}%</b> of days</div>
+            <div className="text-right text-xs text-muted">
+              <div className="text-ink">{fmtDate(start)} – {fmtDate(end)}</div>
+              <div>Past {days} days · {r.m.total} check-ins · {r.m.completion}% of days</div>
             </div>
           </header>
 
-          <section className="mb-2 grid grid-cols-5 gap-1 text-center">
-            {[["Mean mood", fmt(r.m.mean)], ["Baseline (first wk)", fmt(r.m.baseline)], ["Lowest", fmt(r.m.lowest, 0)], ["Highest", fmt(r.m.highest, 0)], ["Acute episodes", String(r.ep.length)]].map(([l, v]) => (
-              <div key={l} className="rounded border border-slate-400 p-1">
-                <div className="text-lg font-bold">{v}</div>
-                <div className="text-[10px] leading-tight">{l}</div>
+          <section className="mb-3 grid grid-cols-2 gap-1.5 text-center sm:grid-cols-5">
+            {[["Mean mood", fmt(r.m.mean)], ["Baseline, first week", fmt(r.m.baseline)], ["Lowest", fmt(r.m.lowest, 0)], ["Highest", fmt(r.m.highest, 0)], ["Acute episodes", String(r.ep.length)]].map(([l, v]) => (
+              <div key={l} className="rounded-lg border border-line px-1 py-1.5">
+                <div className="font-serif text-xl italic leading-none tabular-nums">{v}</div>
+                <div className="mt-1 text-[10px] leading-tight text-muted">{l}</div>
               </div>
             ))}
           </section>
-          <p className="mb-2 text-[10px]">Mood scale: −5 (very low) to +5 (very high).</p>
+          <p className="mb-3 text-[10px] text-muted">Mood scale: −5 very low to +5 very high.</p>
 
-          <section className="mb-2">
-            <H>Mood trajectory (daily average)</H>
+          <section className="mb-3 break-inside-avoid">
+            <H>Mood trajectory, daily average</H>
             <div className="h-24 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={r.series} margin={{ top: 4, bottom: 4, left: 0, right: 0 }}>
                   <YAxis domain={[-5, 5]} hide />
-                  <Line type="monotone" dataKey="mood" stroke="#0f766e" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+                  <Line type="monotone" dataKey="mood" stroke="#1c3d32" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </section>
 
-          <section className="mb-2 grid grid-cols-2 gap-3">
-            <div><H>Top somatic complaints (days)</H><Bars rows={r.somatic} /></div>
-            <div><H>Functional impairments (days)</H><Bars rows={r.functional} /></div>
+          <section className="mb-3 grid grid-cols-1 gap-3 break-inside-avoid sm:grid-cols-2">
+            <div><H>Top somatic complaints, days</H><Bars rows={r.somatic} /></div>
+            <div><H>Functional impairments, days</H><Bars rows={r.functional} /></div>
           </section>
 
-          <section className="mb-2">
-            <H>Acute episodes &amp; treatment response</H>
+          <section className="mb-3 break-inside-avoid">
+            <H>Acute episodes and treatment response</H>
             {r.ep.length === 0 ? <p className="text-xs">No acute episodes.</p> : (
               <>
                 <p className="mb-1 text-xs">
                   {r.ep.length} episodes · mean peak {fmt(r.ep.reduce((a, e) => a + e.peak, 0) / r.ep.length)}/10 · mean duration {fmt(r.ep.reduce((a, e) => a + e.durationMin, 0) / r.ep.length, 0)} min
                 </p>
-                <table className="w-full text-xs">
-                  <thead><tr className="border-b border-slate-400 text-left"><th>Intervention</th><th>Uses</th><th>Relieved</th><th>Partial</th><th>Efficacy*</th></tr></thead>
-                  <tbody>
-                    {r.treat.map((t) => (
-                      <tr key={t.name}><td>{t.name}</td><td>{t.uses}</td><td>{t.relieved}</td><td>{t.partial}</td><td>{t.efficacy}%</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-                <p className="text-[10px]">*Relieved = 100%, Partial = 50%, No change = 0%. PRN medication used in {r.treat.find((t) => t.name === "PRN Medication")?.uses ?? 0} episodes.</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[28rem] text-xs">
+                    <thead><tr className="border-b border-line text-left text-muted"><th className="py-1 font-medium">Intervention</th><th className="font-medium">Uses</th><th className="font-medium">Relieved</th><th className="font-medium">Partial</th><th className="font-medium">Efficacy*</th></tr></thead>
+                    <tbody>
+                      {r.treat.map((t) => (
+                        <tr key={t.name} className="border-b border-line/70"><td className="py-1">{t.name}</td><td className="tabular-nums">{t.uses}</td><td className="tabular-nums">{t.relieved}</td><td className="tabular-nums">{t.partial}</td><td className="tabular-nums">{t.efficacy}%</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-1 text-[10px] text-muted">*Relieved = 100%, Partial = 50%, No change = 0%. PRN medication used in {r.treat.find((t) => t.name === "PRN Medication")?.uses ?? 0} episodes.</p>
               </>
             )}
           </section>
 
-          <section>
+          <section className="break-inside-avoid">
             <H>Validated screeners</H>
-            <table className="w-full text-xs">
-              <thead><tr className="border-b border-slate-400 text-left"><th>Scale</th><th>Latest</th><th>Previous</th><th>Change</th></tr></thead>
-              <tbody>
-                {(["PHQ-9", "GAD-7"] as const).map((k, i) => {
-                  const [latest, prev] = r.screens[i];
-                  return (
-                    <tr key={k}>
-                      <td>{k}</td>
-                      <td>{latest ? `${latest.total} ${severity(k, latest.total)} (${fmtDate(latest.timestamp)})` : "–"}</td>
-                      <td>{prev ? `${prev.total} ${severity(k, prev.total)} (${fmtDate(prev.timestamp)})` : "–"}</td>
-                      <td>{latest && prev ? `${latest.total - prev.total > 0 ? "+" : ""}${latest.total - prev.total}` : "–"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <p className="mt-1 text-[10px]">Self-reported data; screeners are not diagnostic. Generated by ClinTrack {fmtDate(end)}.</p>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[28rem] text-xs">
+                <thead><tr className="border-b border-line text-left text-muted"><th className="py-1 font-medium">Scale</th><th className="font-medium">Latest</th><th className="font-medium">Previous</th><th className="font-medium">Change</th></tr></thead>
+                <tbody>
+                  {(["PHQ-9", "GAD-7"] as const).map((k, i) => {
+                    const [latest, prev] = r.screens[i];
+                    return (
+                      <tr key={k} className="border-b border-line/70">
+                        <td className="py-1">{k}</td>
+                        <td>{latest ? `${latest.total} ${severity(k, latest.total)} (${fmtDate(latest.timestamp)})` : "–"}</td>
+                        <td>{prev ? `${prev.total} ${severity(k, prev.total)} (${fmtDate(prev.timestamp)})` : "–"}</td>
+                        <td>{latest && prev ? `${latest.total - prev.total > 0 ? "+" : ""}${latest.total - prev.total}` : "–"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-[10px] text-muted">Self-reported. Screeners are not diagnostic. ClinTrack · {fmtDate(end)}.</p>
           </section>
         </article>
       )}

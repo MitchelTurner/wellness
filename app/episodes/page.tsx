@@ -1,12 +1,12 @@
 "use client";
-import { Suspense, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { AlertTriangle, X } from "lucide-react";
+import { X } from "lucide-react";
 import { db } from "@/lib/db";
 import { EPISODE_SOMATIC, EPISODE_TYPES, INTERVENTIONS, RESPONSES, type Intervention, type Response } from "@/lib/types";
 import { fmtDate } from "@/lib/analytics";
-import { useNowInput, Card, SliderField, TagSelect, Segmented, primaryBtn, inputCls } from "@/components/ui";
+import { useNowInput, Card, SliderField, TagSelect, Segmented, primaryBtn, inputCls, PageHeader, AcuteTrigger, Empty, quietDanger } from "@/components/ui";
 
 function EpisodeModal({ onClose }: { onClose: () => void }) {
   const [when, setWhen] = useNowInput();
@@ -15,6 +15,17 @@ function EpisodeModal({ onClose }: { onClose: () => void }) {
   const [type, setType] = useState(EPISODE_TYPES[0]);
   const [somatic, setSomatic] = useState<string[]>([]);
   const [used, setUsed] = useState<Partial<Record<Intervention, Response>>>({});
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
 
   const toggle = (name: Intervention) =>
     setUsed((u) => {
@@ -39,33 +50,38 @@ function EpisodeModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Log acute event" className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center">
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-4 sm:rounded-2xl">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold">Log Acute Event</h2>
-          <button aria-label="Close" onClick={onClose} className="p-1"><X /></button>
+    <div role="dialog" aria-modal="true" aria-label="Log acute event" className="fixed inset-0 z-30 flex items-end justify-center bg-ink/45 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
+      <div className="sheet max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-[1.75rem] bg-paper p-5 shadow-2xl sm:rounded-[1.75rem]" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-5 flex items-start justify-between gap-3">
+          <div>
+            <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.18em] text-muted">Right now</p>
+            <h2 className="font-serif text-3xl italic leading-none text-ink">Acute event</h2>
+          </div>
+          <button aria-label="Close" onClick={onClose} className="grid size-9 shrink-0 place-items-center rounded-full bg-sand text-ink"><X size={18} /></button>
         </div>
         <Segmented label="Type" options={EPISODE_TYPES} value={type} onChange={setType} />
-        <label htmlFor="start" className="mb-1 block font-semibold">Start time</label>
+        <label htmlFor="start" className="mb-2 block text-[13px] font-medium text-muted">Start time</label>
         <input id="start" type="datetime-local" className={`${inputCls} mb-4`} value={when} onChange={(e) => setWhen(e.target.value)} />
-        <label htmlFor="dur" className="mb-1 block font-semibold">Estimated duration (minutes)</label>
-        <input id="dur" type="number" min={1} className={`${inputCls} mb-4`} value={duration} onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))} />
-        <SliderField label="Peak intensity" value={peak} min={1} max={10} onChange={setPeak} />
+        <label htmlFor="dur" className="mb-2 block text-[13px] font-medium text-muted">Estimated duration (minutes)</label>
+        <input id="dur" type="number" min={1} className={`${inputCls} mb-5`} value={duration} onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))} />
+        <SliderField label="Peak intensity" value={peak} min={1} max={10} onChange={setPeak} hint={["Mild", "Extreme"]} />
         <TagSelect label="Somatic cluster" options={EPISODE_SOMATIC} value={somatic} onChange={setSomatic} />
-        <div className="mb-4">
-          <div className="mb-1 font-semibold">Interventions used &amp; response</div>
-          {INTERVENTIONS.map((name) => (
-            <div key={name} className="mb-2 rounded-lg border border-slate-300 p-2">
-              <button type="button" aria-pressed={name in used} onClick={() => toggle(name)} className={`rounded-full border px-3 py-1 text-sm font-medium ${name in used ? "border-teal-800 bg-teal-700 text-white" : "border-slate-400"}`}>{name}</button>
-              {name in used && name !== "None" && (
-                <div className="mt-2 flex gap-1">
-                  {RESPONSES.map((r) => (
-                    <button key={r} type="button" aria-pressed={used[name] === r} onClick={() => setUsed((u) => ({ ...u, [name]: r }))} className={`flex-1 rounded border py-1 text-sm ${used[name] === r ? "bg-teal-700 text-white" : "bg-white"}`}>{r}</button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+        <div className="mb-5">
+          <div className="mb-2 text-[13px] font-medium text-muted">Interventions and response</div>
+          <div className="space-y-2">
+            {INTERVENTIONS.map((name) => (
+              <div key={name} className={`rounded-2xl p-3 ${name in used ? "bg-sand/80" : "bg-white ring-1 ring-line"}`}>
+                <button type="button" aria-pressed={name in used} onClick={() => toggle(name)} className={`rounded-full px-3.5 py-1.5 text-sm font-medium ${name in used ? "bg-ink text-cream" : "bg-cream text-ink ring-1 ring-line"}`}>{name}</button>
+                {name in used && name !== "None" && (
+                  <div className="mt-2 flex gap-1 rounded-full bg-white p-1">
+                    {RESPONSES.map((r) => (
+                      <button key={r} type="button" aria-pressed={used[name] === r} onClick={() => setUsed((u) => ({ ...u, [name]: r }))} className={`flex-1 rounded-full py-1.5 text-xs font-medium ${used[name] === r ? "bg-ink text-cream" : "text-muted"}`}>{r}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
         <button className={primaryBtn} onClick={save}>Save event</button>
       </div>
@@ -76,32 +92,37 @@ function EpisodeModal({ onClose }: { onClose: () => void }) {
 function Episodes() {
   const params = useSearchParams();
   const [open, setOpen] = useState(params.get("new") === "1");
+  const close = useCallback(() => setOpen(false), []);
   const episodes = useLiveQuery(() => db.episodes.orderBy("timestamp").reverse().toArray(), []);
   return (
     <>
-      <button onClick={() => setOpen(true)} className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-4 py-4 text-lg font-bold text-white">
-        <AlertTriangle /> Log Acute Event
-      </button>
-      <Card title="Episode history">
-        {!episodes?.length && <p className="text-slate-700">No episodes logged.</p>}
-        <ul className="divide-y divide-slate-200">
-          {episodes?.map((e) => (
-            <li key={e.id} className="flex items-start justify-between gap-2 py-2">
-              <div>
-                <div className="font-semibold">{e.type} · peak {e.peak}/10</div>
-                <div className="text-sm text-slate-700">
-                  {fmtDate(e.timestamp)} {new Date(e.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {e.durationMin} min
-                </div>
-                <div className="text-sm text-slate-700">
-                  {[...e.somatic, ...e.interventions.map((i) => (i.name === "None" ? "No intervention" : `${i.name}: ${i.response}`))].join(" · ")}
-                </div>
-              </div>
-              <button className="text-sm text-red-700 underline" onClick={() => e.id !== undefined && db.episodes.delete(e.id)}>Delete</button>
-            </li>
-          ))}
-        </ul>
+      <PageHeader kicker="Acute events" title="Episodes" lede="Intensity, how long it lasted, and whether anything helped." />
+      <AcuteTrigger onClick={() => setOpen(true)} />
+      <Card title="History">
+        {episodes === undefined ? null : episodes.length === 0 ? <Empty>No acute events yet.</Empty> : (
+          <ul className="space-y-2">
+            {episodes.map((e) => {
+              const detail = [...e.somatic, ...e.interventions.map((i) => (i.name === "None" ? "No intervention" : `${i.name}: ${i.response}`))].join(" · ");
+              return (
+                <li key={e.id} className="flex items-start justify-between gap-3 rounded-2xl bg-sand/50 px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-medium text-ink">{e.type}</span>
+                      <span className="font-serif text-xl italic tabular-nums text-ink">{e.peak}<span className="ml-0.5 text-xs font-sans not-italic text-muted">/10</span></span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted">
+                      {fmtDate(e.timestamp)} {new Date(e.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {e.durationMin} min
+                    </div>
+                    {detail && <p className="mt-2 text-sm leading-relaxed text-ink/80">{detail}</p>}
+                  </div>
+                  <button className={quietDanger} onClick={() => e.id !== undefined && db.episodes.delete(e.id)}>Delete</button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </Card>
-      {open && <EpisodeModal onClose={() => setOpen(false)} />}
+      {open && <EpisodeModal onClose={close} />}
     </>
   );
 }

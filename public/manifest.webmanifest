@@ -4,7 +4,7 @@
   "description": "Private mood & symptom tracker with doctor-ready reports",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#0f766e",
+  "background_color": "#f4f1ea",
+  "theme_color": "#f4f1ea",
   "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
 }
