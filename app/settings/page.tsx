@@ -1,16 +1,18 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { db, clearAll, exportAll, getPatientName, importAll } from "@/lib/db";
 import { Card, primaryBtn, secondaryBtn, dangerBtn, inputCls, useToast, PageHeader } from "@/components/ui";
 
 export default function SettingsPage() {
-  const [name, setName] = useState("");
+  const stored = useLiveQuery(() => db.settings.get("profile"), []);
+  const [name, setName] = useState<string | null>(null);
+  const shown = name ?? stored?.patientName ?? "";
   const [toast, toastEl] = useToast();
   const file = useRef<HTMLInputElement>(null);
-  useEffect(() => { getPatientName().then(setName); }, []);
 
   async function saveName() {
-    await db.settings.put({ key: "profile", patientName: name.trim() });
+    await db.settings.put({ key: "profile", patientName: shown.trim() });
     toast("Name saved");
   }
   async function doExport() {
@@ -37,7 +39,7 @@ export default function SettingsPage() {
       <PageHeader kicker="Private by default" title="Settings" lede="Nothing is uploaded. A backup leaves this device only when you export it." />
       <Card title="Name on reports">
         <label htmlFor="pname" className="mb-2 block text-[13px] font-medium text-muted">Patient name</label>
-        <input id="pname" className={`${inputCls} mb-4`} value={name} onChange={(e) => setName(e.target.value)} placeholder="Shown on the clinical summary" />
+        <input id="pname" className={`${inputCls} mb-4`} value={shown} onChange={(e) => setName(e.target.value)} placeholder="Shown on the clinical summary" />
         <button className={primaryBtn} onClick={saveName}>Save name</button>
       </Card>
       <Card title="Backup">

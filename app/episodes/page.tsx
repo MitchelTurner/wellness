@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import { db } from "@/lib/db";
 import { EPISODE_SOMATIC, EPISODE_TYPES, INTERVENTIONS, RESPONSES, type Intervention, type Response } from "@/lib/types";
 import { fmtDate } from "@/lib/analytics";
-import { useNowInput, Card, SliderField, TagSelect, Segmented, primaryBtn, inputCls, PageHeader, AcuteTrigger, Empty, quietDanger } from "@/components/ui";
+import { useNowInput, Card, SliderField, TagSelect, primaryBtn, inputCls, PageHeader, AcuteTrigger, Empty, quietDanger } from "@/components/ui";
 
 function EpisodeModal({ onClose }: { onClose: () => void }) {
   const [when, setWhen] = useNowInput();
@@ -59,7 +59,14 @@ function EpisodeModal({ onClose }: { onClose: () => void }) {
           </div>
           <button aria-label="Close" onClick={onClose} className="grid size-9 shrink-0 place-items-center rounded-full bg-sand text-ink"><X size={18} /></button>
         </div>
-        <Segmented label="Type" options={EPISODE_TYPES} value={type} onChange={setType} />
+        <div className="mb-5">
+          <div className="mb-2 text-[13px] font-medium text-muted">Type</div>
+          <div className="flex flex-wrap gap-2">
+            {EPISODE_TYPES.map((o) => (
+              <button key={o} type="button" aria-pressed={type === o} onClick={() => setType(o)} className={`rounded-full px-3.5 py-2 text-sm ${type === o ? "bg-ink text-cream" : "bg-white text-ink ring-1 ring-line"}`}>{o}</button>
+            ))}
+          </div>
+        </div>
         <label htmlFor="start" className="mb-2 block text-[13px] font-medium text-muted">Start time</label>
         <input id="start" type="datetime-local" className={`${inputCls} mb-4`} value={when} onChange={(e) => setWhen(e.target.value)} />
         <label htmlFor="dur" className="mb-2 block text-[13px] font-medium text-muted">Estimated duration (minutes)</label>

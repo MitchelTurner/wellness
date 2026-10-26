@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Printer } from "lucide-react";
 import { Line, LineChart, ResponsiveContainer, YAxis } from "recharts";
-import { db, getPatientName } from "@/lib/db";
+import { db } from "@/lib/db";
 import { buildDailySeries, fmt, fmtDate, frequency, inRange, summaryMetrics, treatmentResponse } from "@/lib/analytics";
 import { severity } from "@/lib/scoring";
 import { Segmented, primaryBtn, PageHeader } from "@/components/ui";
@@ -16,8 +16,10 @@ function Bars({ rows }: { rows: { name: string; count: number }[] }) {
       {rows.slice(0, 5).map((r) => (
         <li key={r.name} className="flex items-center gap-2 text-xs">
           <span className="w-32 shrink-0 truncate">{r.name}</span>
-          <span className="h-1.5 rounded-full bg-forest" style={{ width: `${(r.count / max) * 100}%`, minWidth: 2 }} />
-          <span className="font-medium tabular-nums">{r.count}</span>
+          <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sand">
+            <span className="block h-full rounded-full bg-forest" style={{ width: `${Math.max(4, (r.count / max) * 100)}%` }} />
+          </span>
+          <span className="w-4 shrink-0 text-right font-medium tabular-nums">{r.count}</span>
         </li>
       ))}
     </ul>
@@ -31,8 +33,8 @@ const H = ({ children }: { children: React.ReactNode }) => (
 export default function SummaryPage() {
   const [range, setRange] = useState<"14 days" | "30 days" | "90 days">("30 days");
   const days = parseInt(range);
-  const [name, setName] = useState("");
-  useEffect(() => { getPatientName().then(setName); }, []);
+  const profile = useLiveQuery(() => db.settings.get("profile"), []);
+  const name = profile?.patientName ?? "";
   const data = useLiveQuery(async () => ({
     checkIns: await db.checkIns.orderBy("timestamp").toArray(),
     episodes: await db.episodes.toArray(),

@@ -47,17 +47,20 @@ export function SliderField({ label, value, min, max, step = 1, onChange, hint, 
           {caption && <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">{caption}</div>}
         </div>
       </div>
-      <input
-        aria-label={label}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="range"
-        style={{ ["--track" as string]: track }}
-      />
+      <div className="relative">
+        {tone === "bipolar" && <span aria-hidden className="pointer-events-none absolute top-1/2 left-1/2 h-2.5 w-px -translate-x-1/2 -translate-y-1/2 bg-ink/30" />}
+        <input
+          aria-label={label}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="range relative"
+          style={{ "--track": track } as React.CSSProperties}
+        />
+      </div>
       {hint && (
         <div className="mt-0.5 flex justify-between text-[11px] text-muted">
           <span>{hint[0]}</span>
