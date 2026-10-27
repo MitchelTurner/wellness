@@ -6,6 +6,7 @@ import { Line, LineChart, ResponsiveContainer, YAxis } from "recharts";
 import { db } from "@/lib/db";
 import { buildDailySeries, fmt, fmtDate, frequency, inRange, summaryMetrics, treatmentResponse } from "@/lib/analytics";
 import { severity } from "@/lib/scoring";
+import { STEADY_FUNCTION } from "@/lib/types";
 import { Segmented, primaryBtn, PageHeader } from "@/components/ui";
 
 function Bars({ rows }: { rows: { name: string; count: number }[] }) {
@@ -15,7 +16,7 @@ function Bars({ rows }: { rows: { name: string; count: number }[] }) {
     <ul className="space-y-1">
       {rows.slice(0, 5).map((r) => (
         <li key={r.name} className="flex items-center gap-2 text-xs">
-          <span className="w-32 shrink-0 truncate">{r.name}</span>
+          <span className="w-36 shrink-0 leading-tight">{r.name}</span>
           <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sand">
             <span className="block h-full rounded-full bg-forest" style={{ width: `${Math.max(4, (r.count / max) * 100)}%` }} />
           </span>
@@ -50,7 +51,8 @@ export default function SummaryPage() {
       ep,
       series: buildDailySeries(days, ci, [], []),
       somatic: frequency(ci, "somatic"),
-      functional: frequency(ci, "functional").filter((f) => !["Normal activity", "High productivity"].includes(f.name)),
+      affect: frequency(ci, "affect"),
+      functional: frequency(ci, "functional").filter((f) => !STEADY_FUNCTION.has(f.name)),
       treat: treatmentResponse(ep),
       screens: (["PHQ-9", "GAD-7"] as const).map((k) => data.screenings.filter((s) => s.kind === k).slice(-2).reverse()),
     };
@@ -102,8 +104,12 @@ export default function SummaryPage() {
             </div>
           </section>
 
+          <section className="mb-3 break-inside-avoid">
+            <H>Affect, days</H>
+            <Bars rows={r.affect} />
+          </section>
           <section className="mb-3 grid grid-cols-1 gap-3 break-inside-avoid sm:grid-cols-2">
-            <div><H>Top somatic complaints, days</H><Bars rows={r.somatic} /></div>
+            <div><H>Symptoms, days</H><Bars rows={r.somatic} /></div>
             <div><H>Functional impairments, days</H><Bars rows={r.functional} /></div>
           </section>
 

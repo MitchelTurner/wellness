@@ -48,10 +48,87 @@ export interface Settings {
   patientName: string;
 }
 
-export const AFFECT_TAGS = ["Depressed", "Anxious", "Flat/Numb", "Irritable", "Elevated", "Overwhelmed", "Calm"];
-export const SOMATIC_TAGS = ["Headache", "GI Distress", "Muscle Tension", "Racing Heart", "Fatigue", "Brain Fog", "Insomnia"];
-export const FUNCTIONAL_TAGS = ["Work missed/impaired", "Avoided social contact", "Missed meals", "Normal activity", "High productivity"];
-export const EPISODE_TYPES = ["Panic attack", "Depressive crash", "Sudden anger"];
-export const EPISODE_SOMATIC = ["Sweating", "Palpitations", "Derealization", "Tremor", "Shortness of breath"];
+export const AFFECT_TAGS = [
+  "Depressed",
+  "Anxious",
+  "Flat/Numb",
+  "Irritable",
+  "Hopeless",
+  "Guilty",
+  "Tearful",
+  "Angry",
+  "Restless",
+  "Fearful",
+  "Withdrawn",
+  "Loss of interest",
+  "Overwhelmed",
+  "Elevated",
+  "Calm",
+  "Content",
+  "Hopeful",
+];
+export const STEADY_AFFECT = new Set(["Elevated", "Calm", "Content", "Hopeful"]);
+export const SOMATIC_TAGS = [
+  "Headache",
+  "Body aches",
+  "Muscle Tension",
+  "Jaw clenching",
+  "GI Distress",
+  "Nausea",
+  "Appetite loss",
+  "Appetite increase",
+  "Racing Heart",
+  "Palpitations",
+  "Chest tightness",
+  "Shortness of breath",
+  "Sweating",
+  "Tremor",
+  "Dizziness",
+  "Numbness or tingling",
+  "Fatigue",
+  "Brain Fog",
+  "Derealization",
+  "Insomnia",
+  "Early waking",
+  "Nightmares",
+  "Light sensitivity",
+  "Sound sensitivity",
+  "Hot flashes",
+  "Chills",
+];
+export const FUNCTIONAL_TAGS = [
+  "Work missed/impaired",
+  "Avoided social contact",
+  "Missed meals",
+  "Could not concentrate",
+  "Stayed in bed",
+  "Cancelled plans",
+  "Conflict with others",
+  "Needed help with tasks",
+  "Hard to leave home",
+  "Normal activity",
+  "High productivity",
+  "Exercised",
+  "Kept a routine",
+];
+export const STEADY_FUNCTION = new Set(["Normal activity", "High productivity", "Exercised", "Kept a routine"]);
+export const EPISODE_TYPES = ["Panic attack", "Anxiety surge", "Depressive crash", "Crying spell", "Sudden anger", "Dissociation", "Shutdown"];
+export const EPISODE_SOMATIC = [
+  "Sweating",
+  "Palpitations",
+  "Derealization",
+  "Tremor",
+  "Shortness of breath",
+  "Chest tightness",
+  "Nausea",
+  "Dizziness",
+  "Numbness or tingling",
+  "Choking sensation",
+  "Hot flashes",
+  "Chills",
+  "Detachment",
+  "Blurred vision",
+  "Crying",
+];
 export const INTERVENTIONS: Intervention[] = ["PRN Medication", "Breathing/Grounding", "Rest", "Social Support", "None"];
 export const RESPONSES: Response[] = ["Relieved", "Partial", "No change"];

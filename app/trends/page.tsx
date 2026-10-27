@@ -3,8 +3,30 @@ import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis } from "recharts";
 import { db } from "@/lib/db";
-import { buildDailySeries, fmt, inRange, sleepMoodCorrelation } from "@/lib/analytics";
+import { buildDailySeries, fmt, frequency, inRange, sleepMoodCorrelation } from "@/lib/analytics";
 import { Card, Segmented, PageHeader, Empty } from "@/components/ui";
+
+function CountList({ label, rows }: { label: string; rows: { name: string; count: number }[] }) {
+  const max = Math.max(1, ...rows.map((row) => row.count));
+  return (
+    <div>
+      <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">{label}</h3>
+      {rows.length === 0 ? <p className="text-sm text-muted">None recorded.</p> : (
+        <ul className="space-y-2">
+          {rows.map((row) => (
+            <li key={row.name} className="flex items-center gap-3 text-sm">
+              <span className="w-44 shrink-0 leading-snug text-ink">{row.name}</span>
+              <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sand">
+                <span className="block h-full rounded-full bg-forest" style={{ width: `${Math.max(8, (row.count / max) * 100)}%` }} />
+              </span>
+              <span className="w-5 shrink-0 text-right tabular-nums text-muted">{row.count}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 const tick = { fontSize: 11, fill: "#5c564e" };
 const tip = {
@@ -22,20 +44,25 @@ export default function TrendsPage() {
     screenings: await db.screenings.toArray(),
   }), []);
 
-  const { series, corr } = useMemo(() => {
-    if (!data) return { series: [], corr: null };
+  const { series, corr, symptoms, affect } = useMemo(() => {
+    if (!data) return { series: [], corr: null, symptoms: [], affect: [] };
     const ci = inRange(data.checkIns, days);
     const series = buildDailySeries(days, ci, inRange(data.episodes, days), inRange(data.screenings, days)).map((p) => ({
       ...p,
       episodeMarker: p.episodePeak === null ? null : 5.5,
       screenMarker: p.phq9 ?? p.gad7,
     }));
-    return { series, corr: sleepMoodCorrelation(ci) };
+    return {
+      series,
+      corr: sleepMoodCorrelation(ci),
+      symptoms: frequency(ci, "somatic").slice(0, 8),
+      affect: frequency(ci, "affect").slice(0, 8),
+    };
   }, [data, days]);
 
   return (
     <>
-      <PageHeader kicker="Patterns" title="Trends" lede="Daily mood against hours of sleep. Dots mark acute events. Diamonds mark a screener." />
+      <PageHeader kicker="Patterns" title="Trends" lede="Daily mood against hours of sleep, then the symptoms and feelings recorded on those check-ins. Dots mark acute events. Diamonds mark a screener." />
       <Card>
         <Segmented label="Range" options={["14 days", "30 days"] as const} value={range} onChange={setRange} />
         <div className="h-72 w-full" role="img" aria-label="Mood versus sleep hours chart">
@@ -54,6 +81,16 @@ export default function TrendsPage() {
             </ComposedChart>
           </ResponsiveContainer>
         </div>
+      </Card>
+      <Card title="Check-in symptoms">
+        {symptoms.length || affect.length ? (
+          <div className="grid gap-6 sm:grid-cols-2">
+            <CountList label="Symptoms" rows={symptoms} />
+            <CountList label="Affect" rows={affect} />
+          </div>
+        ) : (
+          <Empty>No symptoms recorded in this range.</Empty>
+        )}
       </Card>
       <Card title="Sleep and mood">
         {corr && corr.lowCount > 0 ? (

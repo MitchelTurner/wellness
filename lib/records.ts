@@ -25,7 +25,7 @@ export function parseCheckIn(body: unknown): CheckInRecord | null {
   if (!isRecord(body) || !isUuid(body.clientId) || !inRange(body.timestamp, 0, 4e12)) return null;
   if (!inRange(body.mood, -5, 5) || !inRange(body.anxiety, 1, 10) || !inRange(body.sleepHours, 0, 14)) return null;
   if (body.sleepQuality !== "Poor" && body.sleepQuality !== "Fair" && body.sleepQuality !== "Good") return null;
-  if (!isStringList(body.affect, 12) || !isStringList(body.somatic, 12) || !isStringList(body.functional, 12)) return null;
+  if (!isStringList(body.affect, 40) || !isStringList(body.somatic, 40) || !isStringList(body.functional, 40)) return null;
   if (typeof body.note !== "string" || body.note.length > 160) return null;
   const sleepQuality: SleepQuality = body.sleepQuality;
   return {
@@ -46,7 +46,7 @@ export function parseEpisode(body: unknown): EpisodeRecord | null {
   if (!isRecord(body) || !isUuid(body.clientId) || !inRange(body.timestamp, 0, 4e12)) return null;
   if (!inRange(body.durationMin, 1, 10080) || !inRange(body.peak, 1, 10)) return null;
   if (typeof body.type !== "string" || !EPISODE_TYPES.includes(body.type)) return null;
-  if (!isStringList(body.somatic, 12) || typeof body.note !== "string" || body.note.length > 160) return null;
+  if (!isStringList(body.somatic, 40) || typeof body.note !== "string" || body.note.length > 160) return null;
   if (!Array.isArray(body.interventions) || body.interventions.length > INTERVENTIONS.length) return null;
   const interventions: { name: Intervention; response: Response }[] = [];
   for (const item of body.interventions) {

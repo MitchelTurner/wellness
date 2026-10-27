@@ -80,7 +80,7 @@ function EpisodeModal({ onClose, onSaved }: { onClose: () => void; onSaved: (ok:
         <label htmlFor="dur" className="mb-2 block text-[13px] font-medium text-muted">Estimated duration (minutes)</label>
         <input id="dur" type="number" min={1} className={`${inputCls} mb-5`} value={duration} onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))} />
         <SliderField label="Peak intensity" value={peak} min={1} max={10} onChange={setPeak} hint={["Mild", "Extreme"]} />
-        <TagSelect label="Somatic cluster" options={EPISODE_SOMATIC} value={somatic} onChange={setSomatic} />
+        <TagSelect label="Symptoms" options={EPISODE_SOMATIC} value={somatic} onChange={setSomatic} />
         <div className="mb-5">
           <div className="mb-2 text-[13px] font-medium text-muted">Interventions and response</div>
           <div className="space-y-2">

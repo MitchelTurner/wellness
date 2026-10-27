@@ -9,6 +9,20 @@ import { useNowInput, Card, SliderField, TagSelect, Segmented, primaryBtn, input
 
 const MOOD_WORD = ["Very low", "Very low", "Low", "Low", "Subdued", "Even", "Steady", "Lifted", "High", "Very high", "Very high"];
 
+function TagLine({ label, items }: { label: string; items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <div className="mt-2">
+      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">{label}</div>
+      <ul className="mt-1 flex flex-wrap gap-1.5">
+        {items.map((item) => (
+          <li key={item} className="rounded-full bg-white px-2.5 py-1 text-xs text-ink ring-1 ring-line">{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function CheckInPage() {
   const [mood, setMood] = useState(0);
   const [anxiety, setAnxiety] = useState(4);
@@ -32,7 +46,7 @@ export default function CheckInPage() {
   const [saving, setSaving] = useState(false);
   const saved = useLiveQuery(async () => {
     const rows = await db.checkIns.orderBy("timestamp").reverse().toArray();
-    return rows.filter((row) => row.clientId).slice(0, 8);
+    return rows.filter((row) => row.clientId);
   }, []);
 
   async function save() {
@@ -61,7 +75,7 @@ export default function CheckInPage() {
       </Card>
       <Card>
         <TagSelect label="Affect" options={AFFECT_TAGS} value={affect} onChange={setAffect} />
-        <TagSelect label="Somatic markers" options={SOMATIC_TAGS} value={somatic} onChange={setSomatic} />
+        <TagSelect label="Symptoms" options={SOMATIC_TAGS} value={somatic} onChange={setSomatic} />
         <TagSelect label="Functional impact" options={FUNCTIONAL_TAGS} value={functional} onChange={setFunctional} />
         <label className="mb-2 block text-[13px] font-medium text-muted" htmlFor="note">Note</label>
         <input id="note" maxLength={160} className={`${inputCls} mb-4`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="One sentence about the day" />
@@ -82,6 +96,9 @@ export default function CheckInPage() {
                   </div>
                   <div className="mt-0.5 text-xs text-muted">{fmtDate(row.timestamp)} {new Date(row.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
                   {row.note && <p className="mt-2 text-sm text-ink/80">{row.note}</p>}
+                  <TagLine label="Affect" items={row.affect} />
+                  <TagLine label="Symptoms" items={row.somatic} />
+                  <TagLine label="Function" items={row.functional} />
                 </div>
                 <button className={quietDanger} onClick={() => deleteStoredCheckIn(row).then((ok) => toast(ok ? "Check-in deleted" : "Removed on this device. The database could not be reached."))}>Delete</button>
               </li>

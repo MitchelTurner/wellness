@@ -1,5 +1,5 @@
 import type { CheckIn, Episode, Screening } from "./types";
-import { AFFECT_TAGS, SOMATIC_TAGS, FUNCTIONAL_TAGS } from "./types";
+import { AFFECT_TAGS, SOMATIC_TAGS, FUNCTIONAL_TAGS, STEADY_AFFECT, STEADY_FUNCTION } from "./types";
 import { sumAnswers } from "./scoring";
 
 const DAY = 86400000;
@@ -30,9 +30,9 @@ export function buildSeed() {
       anxiety,
       sleepHours,
       sleepQuality: sleepHours < 6 ? "Poor" : sleepHours < 7.5 ? "Fair" : "Good",
-      affect: low ? pick(AFFECT_TAGS.slice(0, 4), 1 + Math.floor(r() * 2)) : pick(["Calm", "Elevated", "Anxious"], 1),
+      affect: low ? pick(AFFECT_TAGS.filter((tag) => !STEADY_AFFECT.has(tag)), 1 + Math.floor(r() * 2)) : pick(["Calm", "Elevated", "Content", "Anxious"], 1),
       somatic: low ? pick(SOMATIC_TAGS, 1 + Math.floor(r() * 3)) : r() < 0.3 ? pick(SOMATIC_TAGS, 1) : [],
-      functional: low ? pick(FUNCTIONAL_TAGS.slice(0, 3), 1 + Math.floor(r() * 2)) : pick(FUNCTIONAL_TAGS.slice(3), 1),
+      functional: low ? pick(FUNCTIONAL_TAGS.filter((tag) => !STEADY_FUNCTION.has(tag)), 1 + Math.floor(r() * 2)) : pick([...STEADY_FUNCTION], 1),
       note: low ? "Rough day." : "",
     });
   }
