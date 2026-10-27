@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { ClipboardCheck, Zap, ListChecks, LineChart, FileText, Settings } from "lucide-react";
 import { seedIfFirstLaunch } from "@/lib/db";
+import { pullServerRecords, pushOwnedRecords } from "@/lib/persist";
 
 const NAV = [
   { href: "/", label: "Check-In", icon: ClipboardCheck },
@@ -25,7 +26,10 @@ function Mark({ className = "size-8" }: { className?: string }) {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   useEffect(() => {
-    seedIfFirstLaunch().catch(() => {});
+    seedIfFirstLaunch()
+      .then(() => pullServerRecords())
+      .then(() => pushOwnedRecords())
+      .catch(() => {});
     if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }

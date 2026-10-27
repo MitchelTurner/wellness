@@ -2,6 +2,7 @@ export type SleepQuality = "Poor" | "Fair" | "Good";
 
 export interface CheckIn {
   id?: number;
+  clientId?: string;
   timestamp: number;
   mood: number; // -5..+5
   anxiety: number; // 1..10
@@ -23,6 +24,7 @@ export type Response = "Relieved" | "Partial" | "No change";
 
 export interface Episode {
   id?: number;
+  clientId?: string;
   timestamp: number;
   durationMin: number;
   peak: number; // 1..10

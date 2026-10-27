@@ -1,6 +1,6 @@
 # ClinTrack
 
-Privacy-first PWA for tracking mood, somatic symptoms and functional impact, and producing a one-page clinical summary for your doctor. All data is stored on-device in IndexedDB (Dexie); 30 days of mock data are seeded on first launch.
+Privacy-first PWA for tracking mood, somatic symptoms and functional impact, and producing a one-page clinical summary for your doctor. Screeners and settings stay on-device in IndexedDB (Dexie). Check-ins and episodes are stored there and in a SQLite database at `data/clintrack.sqlite`. Thirty days of mock data are seeded on first launch.
 
 ```
 npm install

@@ -4,17 +4,19 @@ import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { X } from "lucide-react";
 import { db } from "@/lib/db";
+import { deleteStoredEpisode, saveEpisode } from "@/lib/persist";
 import { EPISODE_SOMATIC, EPISODE_TYPES, INTERVENTIONS, RESPONSES, type Intervention, type Response } from "@/lib/types";
 import { fmtDate } from "@/lib/analytics";
-import { useNowInput, Card, SliderField, TagSelect, primaryBtn, inputCls, PageHeader, AcuteTrigger, Empty, quietDanger } from "@/components/ui";
+import { useNowInput, Card, SliderField, TagSelect, primaryBtn, inputCls, PageHeader, AcuteTrigger, Empty, quietDanger, useToast } from "@/components/ui";
 
-function EpisodeModal({ onClose }: { onClose: () => void }) {
+function EpisodeModal({ onClose, onSaved }: { onClose: () => void; onSaved: (ok: boolean) => void }) {
   const [when, setWhen] = useNowInput();
   const [duration, setDuration] = useState(15);
   const [peak, setPeak] = useState(7);
   const [type, setType] = useState(EPISODE_TYPES[0]);
   const [somatic, setSomatic] = useState<string[]>([]);
   const [used, setUsed] = useState<Partial<Record<Intervention, Response>>>({});
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -36,17 +38,23 @@ function EpisodeModal({ onClose }: { onClose: () => void }) {
     });
 
   async function save() {
+    if (saving) return;
+    setSaving(true);
     const ts = new Date(when).getTime();
-    await db.episodes.add({
-      timestamp: Number.isNaN(ts) ? Date.now() : ts,
-      durationMin: duration,
-      peak,
-      type,
-      somatic,
-      interventions: (Object.entries(used) as [Intervention, Response][]).map(([name, response]) => ({ name, response })),
-      note: "",
-    });
-    onClose();
+    try {
+      const ok = await saveEpisode({
+        timestamp: Number.isNaN(ts) ? Date.now() : ts,
+        durationMin: duration,
+        peak,
+        type,
+        somatic,
+        interventions: (Object.entries(used) as [Intervention, Response][]).map(([name, response]) => ({ name, response })),
+        note: "",
+      });
+      onSaved(ok);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -90,7 +98,7 @@ function EpisodeModal({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         </div>
-        <button className={primaryBtn} onClick={save}>Save event</button>
+        <button className={primaryBtn} onClick={save} disabled={saving}>{saving ? "Saving…" : "Save event"}</button>
       </div>
     </div>
   );
@@ -100,6 +108,7 @@ function Episodes() {
   const params = useSearchParams();
   const [open, setOpen] = useState(params.get("new") === "1");
   const close = useCallback(() => setOpen(false), []);
+  const [toast, toastEl] = useToast();
   const episodes = useLiveQuery(() => db.episodes.orderBy("timestamp").reverse().toArray(), []);
   return (
     <>
@@ -122,14 +131,15 @@ function Episodes() {
                     </div>
                     {detail && <p className="mt-2 text-sm leading-relaxed text-ink/80">{detail}</p>}
                   </div>
-                  <button className={quietDanger} onClick={() => e.id !== undefined && db.episodes.delete(e.id)}>Delete</button>
+                  <button className={quietDanger} onClick={() => deleteStoredEpisode(e).then((ok) => toast(ok ? "Event deleted" : "Removed on this device. The database could not be reached."))}>Delete</button>
                 </li>
               );
             })}
           </ul>
         )}
       </Card>
-      {open && <EpisodeModal onClose={close} />}
+      {open && <EpisodeModal onClose={close} onSaved={(ok) => { close(); toast(ok ? "Event saved" : "Saved on this device. The database could not be reached."); }} />}
+      {toastEl}
     </>
   );
 }

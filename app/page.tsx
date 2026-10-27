@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
+import { deleteStoredCheckIn, saveCheckIn } from "@/lib/persist";
 import { AFFECT_TAGS, SOMATIC_TAGS, FUNCTIONAL_TAGS, type SleepQuality } from "@/lib/types";
-import { toLocalInput } from "@/lib/analytics";
-import { useNowInput, Card, SliderField, TagSelect, Segmented, primaryBtn, inputCls, useToast, PageHeader, AcuteTrigger } from "@/components/ui";
+import { fmtDate, toLocalInput } from "@/lib/analytics";
+import { useNowInput, Card, SliderField, TagSelect, Segmented, primaryBtn, inputCls, useToast, PageHeader, AcuteTrigger, quietDanger } from "@/components/ui";
 
 const MOOD_WORD = ["Very low", "Very low", "Low", "Low", "Subdued", "Even", "Steady", "Lifted", "High", "Very high", "Very high"];
 
@@ -27,12 +29,24 @@ export default function CheckInPage() {
     return () => clearTimeout(t);
   }, []);
 
+  const [saving, setSaving] = useState(false);
+  const saved = useLiveQuery(async () => {
+    const rows = await db.checkIns.orderBy("timestamp").reverse().toArray();
+    return rows.filter((row) => row.clientId).slice(0, 8);
+  }, []);
+
   async function save() {
+    if (saving) return;
+    setSaving(true);
     const ts = new Date(when).getTime();
-    await db.checkIns.add({ timestamp: Number.isNaN(ts) ? Date.now() : ts, mood, anxiety, sleepHours, sleepQuality, affect, somatic, functional, note: note.trim() });
-    setAffect([]); setSomatic([]); setFunctional([]); setNote(""); setMood(0); setAnxiety(4);
-    setWhen(toLocalInput(Date.now()));
-    toast("Check-in saved");
+    try {
+      const ok = await saveCheckIn({ timestamp: Number.isNaN(ts) ? Date.now() : ts, mood, anxiety, sleepHours, sleepQuality, affect, somatic, functional, note: note.trim() });
+      setAffect([]); setSomatic([]); setFunctional([]); setNote(""); setMood(0); setAnxiety(4);
+      setWhen(toLocalInput(Date.now()));
+      toast(ok ? "Check-in saved" : "Saved on this device. The database could not be reached.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -53,9 +67,28 @@ export default function CheckInPage() {
         <input id="note" maxLength={160} className={`${inputCls} mb-4`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="One sentence about the day" />
         <label className="mb-2 block text-[13px] font-medium text-muted" htmlFor="when">Time</label>
         <input id="when" type="datetime-local" className={`${inputCls} mb-5`} value={when} onChange={(e) => setWhen(e.target.value)} />
-        <button className={primaryBtn} onClick={save}>Save check-in</button>
-        <p className="mt-3 text-center text-xs text-muted">Saved on this device only.</p>
+        <button className={primaryBtn} onClick={save} disabled={saving}>{saving ? "Saving…" : "Save check-in"}</button>
+        <p className="mt-3 text-center text-xs text-muted">Saved on this device and in the app database.</p>
       </Card>
+      {!!saved?.length && (
+        <Card title="Saved check-ins">
+          <ul className="space-y-2">
+            {saved.map((row) => (
+              <li key={row.clientId} className="flex items-start justify-between gap-3 rounded-2xl bg-sand/50 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="font-serif text-xl italic tabular-nums">{row.mood > 0 ? `+${row.mood}` : row.mood}</span>
+                    <span className="text-sm text-muted">Anxiety {row.anxiety} · {row.sleepHours} h {row.sleepQuality.toLowerCase()}</span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted">{fmtDate(row.timestamp)} {new Date(row.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                  {row.note && <p className="mt-2 text-sm text-ink/80">{row.note}</p>}
+                </div>
+                <button className={quietDanger} onClick={() => deleteStoredCheckIn(row).then((ok) => toast(ok ? "Check-in deleted" : "Removed on this device. The database could not be reached."))}>Delete</button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
       {toastEl}
     </>
   );
