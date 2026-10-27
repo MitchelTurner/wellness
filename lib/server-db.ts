@@ -12,6 +12,7 @@ function db() {
     database = new DatabaseSync(path.join(dir, "clintrack.sqlite"));
     database.exec(`
       PRAGMA journal_mode = WAL;
+      PRAGMA busy_timeout = 5000;
       CREATE TABLE IF NOT EXISTS check_ins (
         client_id TEXT PRIMARY KEY,
         timestamp INTEGER NOT NULL,
@@ -34,9 +35,27 @@ function db() {
         interventions TEXT NOT NULL,
         note TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        password_hash TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS sessions (
+        token_hash TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+      );
     `);
+    ensureColumn("check_ins", "user_id", "ALTER TABLE check_ins ADD COLUMN user_id INTEGER");
+    ensureColumn("episodes", "user_id", "ALTER TABLE episodes ADD COLUMN user_id INTEGER");
   }
   return database;
+}
+
+function ensureColumn(table: string, column: string, ddl: string) {
+  const info = db().prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!info.some((col) => col.name === column)) db().exec(ddl);
 }
 
 function json(value: unknown) {
@@ -52,44 +71,98 @@ function parseJson<T>(value: unknown, fallback: T): T {
   }
 }
 
-const upsertCheckInSql = () => db().prepare(`
-  INSERT INTO check_ins (client_id, timestamp, mood, anxiety, sleep_hours, sleep_quality, affect, somatic, functional, note)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT(client_id) DO UPDATE SET
-    timestamp = excluded.timestamp,
-    mood = excluded.mood,
-    anxiety = excluded.anxiety,
-    sleep_hours = excluded.sleep_hours,
-    sleep_quality = excluded.sleep_quality,
-    affect = excluded.affect,
-    somatic = excluded.somatic,
-    functional = excluded.functional,
-    note = excluded.note
-`);
+export type Account = { id: number; username: string; passwordHash: string };
 
-const upsertEpisodeSql = () => db().prepare(`
-  INSERT INTO episodes (client_id, timestamp, duration_min, peak, type, somatic, interventions, note)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT(client_id) DO UPDATE SET
-    timestamp = excluded.timestamp,
-    duration_min = excluded.duration_min,
-    peak = excluded.peak,
-    type = excluded.type,
-    somatic = excluded.somatic,
-    interventions = excluded.interventions,
-    note = excluded.note
-`);
-
-export function saveCheckInRow(row: CheckInRecord) {
-  upsertCheckInSql().run(row.clientId, row.timestamp, row.mood, row.anxiety, row.sleepHours, row.sleepQuality, json(row.affect), json(row.somatic), json(row.functional), row.note);
+export function countUsers() {
+  const row = db().prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
+  return Number(row.n);
 }
 
-export function saveEpisodeRow(row: EpisodeRecord) {
-  upsertEpisodeSql().run(row.clientId, row.timestamp, row.durationMin, row.peak, row.type, json(row.somatic), json(row.interventions), row.note);
+export function createFirstUser(username: string, passwordHash: string): number | null {
+  const database = db();
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const existing = database.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
+    if (Number(existing.n) !== 0) {
+      database.exec("ROLLBACK");
+      return null;
+    }
+    const result = database.prepare("INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)").run(username, passwordHash, Date.now());
+    const id = Number(result.lastInsertRowid);
+    database.prepare("UPDATE check_ins SET user_id = ? WHERE user_id IS NULL").run(id);
+    database.prepare("UPDATE episodes SET user_id = ? WHERE user_id IS NULL").run(id);
+    database.exec("COMMIT");
+    return id;
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
 }
 
-export function listCheckInRows(): CheckInRecord[] {
-  const rows = db().prepare("SELECT * FROM check_ins ORDER BY timestamp DESC").all() as Record<string, unknown>[];
+export function findUserByUsername(username: string): Account | null {
+  const row = db().prepare("SELECT id, username, password_hash FROM users WHERE username = ? COLLATE NOCASE").get(username) as { id: number; username: string; password_hash: string } | undefined;
+  if (!row) return null;
+  return { id: Number(row.id), username: String(row.username), passwordHash: String(row.password_hash) };
+}
+
+export function createSession(tokenHash: string, userId: number, expiresAt: number) {
+  db().prepare("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)").run(tokenHash, userId, expiresAt);
+}
+
+export function deleteSession(tokenHash: string) {
+  db().prepare("DELETE FROM sessions WHERE token_hash = ?").run(tokenHash);
+}
+
+export function userForSession(tokenHash: string): { id: number; username: string } | null {
+  const now = Date.now();
+  db().prepare("DELETE FROM sessions WHERE expires_at < ?").run(now);
+  const row = db().prepare(`
+    SELECT users.id AS id, users.username AS username
+    FROM sessions JOIN users ON users.id = sessions.user_id
+    WHERE sessions.token_hash = ? AND sessions.expires_at >= ?
+  `).get(tokenHash, now) as { id: number; username: string } | undefined;
+  if (!row) return null;
+  return { id: Number(row.id), username: String(row.username) };
+}
+
+export function saveCheckInRow(userId: number, row: CheckInRecord) {
+  const result = db().prepare(`
+    INSERT INTO check_ins (client_id, timestamp, mood, anxiety, sleep_hours, sleep_quality, affect, somatic, functional, note, user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(client_id) DO UPDATE SET
+      timestamp = excluded.timestamp,
+      mood = excluded.mood,
+      anxiety = excluded.anxiety,
+      sleep_hours = excluded.sleep_hours,
+      sleep_quality = excluded.sleep_quality,
+      affect = excluded.affect,
+      somatic = excluded.somatic,
+      functional = excluded.functional,
+      note = excluded.note
+    WHERE check_ins.user_id = excluded.user_id
+  `).run(row.clientId, row.timestamp, row.mood, row.anxiety, row.sleepHours, row.sleepQuality, json(row.affect), json(row.somatic), json(row.functional), row.note, userId);
+  return result.changes > 0;
+}
+
+export function saveEpisodeRow(userId: number, row: EpisodeRecord) {
+  const result = db().prepare(`
+    INSERT INTO episodes (client_id, timestamp, duration_min, peak, type, somatic, interventions, note, user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(client_id) DO UPDATE SET
+      timestamp = excluded.timestamp,
+      duration_min = excluded.duration_min,
+      peak = excluded.peak,
+      type = excluded.type,
+      somatic = excluded.somatic,
+      interventions = excluded.interventions,
+      note = excluded.note
+    WHERE episodes.user_id = excluded.user_id
+  `).run(row.clientId, row.timestamp, row.durationMin, row.peak, row.type, json(row.somatic), json(row.interventions), row.note, userId);
+  return result.changes > 0;
+}
+
+export function listCheckInRows(userId: number): CheckInRecord[] {
+  const rows = db().prepare("SELECT * FROM check_ins WHERE user_id = ? ORDER BY timestamp DESC").all(userId) as Record<string, unknown>[];
   return rows.map((row) => ({
     clientId: String(row.client_id),
     timestamp: Number(row.timestamp),
@@ -104,8 +177,8 @@ export function listCheckInRows(): CheckInRecord[] {
   }));
 }
 
-export function listEpisodeRows(): EpisodeRecord[] {
-  const rows = db().prepare("SELECT * FROM episodes ORDER BY timestamp DESC").all() as Record<string, unknown>[];
+export function listEpisodeRows(userId: number): EpisodeRecord[] {
+  const rows = db().prepare("SELECT * FROM episodes WHERE user_id = ? ORDER BY timestamp DESC").all(userId) as Record<string, unknown>[];
   return rows.map((row) => ({
     clientId: String(row.client_id),
     timestamp: Number(row.timestamp),
@@ -118,18 +191,18 @@ export function listEpisodeRows(): EpisodeRecord[] {
   }));
 }
 
-export function deleteCheckInRow(clientId: string) {
-  db().prepare("DELETE FROM check_ins WHERE client_id = ?").run(clientId);
+export function deleteCheckInRow(userId: number, clientId: string) {
+  db().prepare("DELETE FROM check_ins WHERE client_id = ? AND user_id = ?").run(clientId, userId);
 }
 
-export function deleteEpisodeRow(clientId: string) {
-  db().prepare("DELETE FROM episodes WHERE client_id = ?").run(clientId);
+export function deleteEpisodeRow(userId: number, clientId: string) {
+  db().prepare("DELETE FROM episodes WHERE client_id = ? AND user_id = ?").run(clientId, userId);
 }
 
-export function deleteAllCheckInRows() {
-  db().exec("DELETE FROM check_ins;");
+export function deleteAllCheckInRows(userId: number) {
+  db().prepare("DELETE FROM check_ins WHERE user_id = ?").run(userId);
 }
 
-export function deleteAllEpisodeRows() {
-  db().exec("DELETE FROM episodes;");
+export function deleteAllEpisodeRows(userId: number) {
+  db().prepare("DELETE FROM episodes WHERE user_id = ?").run(userId);
 }

@@ -83,10 +83,23 @@ export async function pushOwnedRecords() {
     db.checkIns.filter((row) => !!row.clientId).toArray(),
     db.episodes.filter((row) => !!row.clientId).toArray(),
   ]);
-  await Promise.all([
+  const results = await Promise.all([
     ...checkIns.map((row) => postJson("/api/check-ins", withoutId(row))),
     ...episodes.map((row) => postJson("/api/episodes", withoutId(row))),
   ]);
+  return results.every(Boolean);
+}
+
+export async function signOut() {
+  const pushed = await pushOwnedRecords();
+  await fetch("/api/auth/logout", { method: "POST" });
+  if (pushed) {
+    await db.checkIns.clear();
+    await db.episodes.clear();
+  }
+  // Full load so the signed-out document is requested with the cleared cookie.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+  window.location.href = "/login";
 }
 
 export async function clearServerRecords() {

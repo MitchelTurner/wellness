@@ -1,8 +1,8 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, clearAll, exportAll, getPatientName, importAll } from "@/lib/db";
-import { clearServerRecords, pushOwnedRecords } from "@/lib/persist";
+import { clearServerRecords, pushOwnedRecords, signOut } from "@/lib/persist";
 import { Card, primaryBtn, secondaryBtn, dangerBtn, inputCls, useToast, PageHeader } from "@/components/ui";
 
 export default function SettingsPage() {
@@ -10,7 +10,11 @@ export default function SettingsPage() {
   const [name, setName] = useState<string | null>(null);
   const shown = name ?? stored?.patientName ?? "";
   const [toast, toastEl] = useToast();
+  const [account, setAccount] = useState("");
   const file = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    fetch("/api/auth/session").then((res) => res.json()).then((data: { user: { username: string } | null }) => setAccount(data.user?.username ?? ""));
+  }, []);
 
   async function saveName() {
     await db.settings.put({ key: "profile", patientName: shown.trim() });
@@ -39,7 +43,11 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageHeader kicker="Private by default" title="Settings" lede="Check-ins and episodes are stored in the app database as well as on this device. A JSON backup still leaves only when you export it." />
+      <PageHeader kicker="Private by default" title="Settings" lede="Sign-in locks check-ins and episodes to your account. A JSON backup still leaves only when you export it." />
+      <Card title="Account">
+        <p className="mb-4 text-sm leading-relaxed text-muted">{account ? <>Signed in as <span className="font-medium text-ink">{account}</span>. Signing out locks the records until that password is used again.</> : "Signed in."}</p>
+        <button className={secondaryBtn} onClick={() => signOut()}>Sign out</button>
+      </Card>
       <Card title="Name on reports">
         <label htmlFor="pname" className="mb-2 block text-[13px] font-medium text-muted">Patient name</label>
         <input id="pname" className={`${inputCls} mb-4`} value={shown} onChange={(e) => setName(e.target.value)} placeholder="Shown on the clinical summary" />

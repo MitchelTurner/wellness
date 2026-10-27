@@ -1,10 +1,10 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ClipboardCheck, Zap, ListChecks, LineChart, FileText, Settings } from "lucide-react";
 import { seedIfFirstLaunch } from "@/lib/db";
-import { pullServerRecords, pushOwnedRecords } from "@/lib/persist";
+import { pullServerRecords, pushOwnedRecords, signOut } from "@/lib/persist";
 
 const NAV = [
   { href: "/", label: "Check-In", icon: ClipboardCheck },
@@ -25,17 +25,33 @@ function Mark({ className = "size-8" }: { className?: string }) {
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
+  const [username, setUsername] = useState("");
   useEffect(() => {
-    seedIfFirstLaunch()
-      .then(() => pullServerRecords())
-      .then(() => pushOwnedRecords())
-      .catch(() => {});
     if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
   }, []);
+  useEffect(() => {
+    if (path === "/login") return;
+    let cancel = false;
+    fetch("/api/auth/session")
+      .then((res) => res.json())
+      .then((data: { user: { username: string } | null }) => {
+        if (cancel) return;
+        if (!data.user) {
+          window.location.replace("/login");
+          return;
+        }
+        setUsername(data.user.username);
+        seedIfFirstLaunch().then(() => pullServerRecords()).then(() => pushOwnedRecords()).catch(() => {});
+      })
+      .catch(() => window.location.replace("/login"));
+    return () => { cancel = true; };
+  }, [path]);
 
   const settingsOn = path.startsWith("/settings");
+
+  if (path === "/login") return <>{children}</>;
 
   return (
     <div className="relative min-h-screen">
@@ -45,7 +61,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <Mark />
             <span>
               <span className="block font-serif text-[1.35rem] italic leading-none text-ink">ClinTrack</span>
-              <span className="mt-1 block text-[11px] text-muted">Private · on this device</span>
+              <span className="mt-1 block text-[11px] text-muted">{username ? `Signed in as ${username}` : "Private"}</span>
             </span>
           </span>
         </Link>
@@ -74,6 +90,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <Settings size={18} strokeWidth={settingsOn ? 2.25 : 1.75} />
             Settings
           </Link>
+          <button type="button" onClick={() => signOut()} className="mt-1 w-full rounded-2xl px-3 py-2 text-left text-sm text-muted transition hover:bg-white/80 hover:text-ink">
+            Sign out
+          </button>
         </div>
       </aside>
 
