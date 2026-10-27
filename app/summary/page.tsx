@@ -94,14 +94,16 @@ export default function SummaryPage() {
 
           <section className="mb-3 break-inside-avoid">
             <H>Mood trajectory, daily average</H>
-            <div className="h-24 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={r.series} margin={{ top: 4, bottom: 4, left: 0, right: 0 }}>
-                  <YAxis domain={[-5, 5]} hide />
-                  <Line type="monotone" dataKey="mood" stroke="#1c3d32" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            {r.series.some((point) => point.mood !== null) ? (
+              <div className="h-24 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={r.series} margin={{ top: 4, bottom: 4, left: 0, right: 0 }}>
+                    <YAxis domain={[-5, 5]} hide />
+                    <Line type="monotone" dataKey="mood" stroke="#1c3d32" strokeWidth={2} dot={{ r: 2, fill: "#1c3d32", strokeWidth: 0 }} connectNulls={false} isAnimationActive={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : <p className="text-xs">No check-ins in this range.</p>}
           </section>
 
           <section className="mb-3 break-inside-avoid">

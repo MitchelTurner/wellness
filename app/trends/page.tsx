@@ -65,7 +65,8 @@ export default function TrendsPage() {
       <PageHeader kicker="Patterns" title="Trends" lede="Daily mood against hours of sleep, then the symptoms and feelings recorded on those check-ins. Dots mark acute events. Diamonds mark a screener." />
       <Card>
         <Segmented label="Range" options={["14 days", "30 days"] as const} value={range} onChange={setRange} />
-        <div className="h-72 w-full" role="img" aria-label="Mood versus sleep hours chart">
+        {series.some((point) => point.mood !== null) ? (
+          <div className="h-72 w-full" role="img" aria-label="Mood versus sleep hours chart">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={series} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
               <CartesianGrid stroke="#ece6dc" vertical={false} />
@@ -74,13 +75,16 @@ export default function TrendsPage() {
               <YAxis yAxisId="sleep" orientation="right" domain={[0, 12]} tick={tick} axisLine={false} tickLine={false} width={28} />
               <Tooltip {...tip} />
               <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-              <Line yAxisId="mood" type="monotone" dataKey="mood" name="Mood" stroke="#1c3d32" strokeWidth={2.25} dot={false} connectNulls />
-              <Line yAxisId="sleep" type="monotone" dataKey="sleep" name="Sleep (h)" stroke="#a68446" strokeWidth={2} strokeDasharray="4 4" dot={false} connectNulls />
+              <Line yAxisId="mood" type="monotone" dataKey="mood" name="Mood" stroke="#1c3d32" strokeWidth={2.25} dot={{ r: 3, fill: "#1c3d32", strokeWidth: 0 }} connectNulls={false} />
+              <Line yAxisId="sleep" type="monotone" dataKey="sleep" name="Sleep (h)" stroke="#a68446" strokeWidth={2} strokeDasharray="4 4" dot={{ r: 3, fill: "#a68446", strokeWidth: 0 }} connectNulls={false} />
               <Scatter yAxisId="mood" dataKey="episodeMarker" name="Acute episode" fill="#9f3d38" />
               <Scatter yAxisId="mood" dataKey="screenMarker" name="Screener" fill="#161513" shape="diamond" />
             </ComposedChart>
           </ResponsiveContainer>
-        </div>
+          </div>
+        ) : (
+          <Empty>No check-ins in this range yet. Saved check-ins are the only points on this chart.</Empty>
+        )}
       </Card>
       <Card title="Check-in symptoms">
         {symptoms.length || affect.length ? (

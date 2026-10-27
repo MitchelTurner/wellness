@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ClipboardCheck, Zap, ListChecks, LineChart, FileText, Settings } from "lucide-react";
-import { seedIfFirstLaunch } from "@/lib/db";
+import { dropDemoRecords } from "@/lib/db";
 import { pullServerRecords, pushOwnedRecords, signOut } from "@/lib/persist";
 
 const NAV = [
@@ -43,7 +43,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           return;
         }
         setUsername(data.user.username);
-        seedIfFirstLaunch().then(() => pullServerRecords()).then(() => pushOwnedRecords()).catch(() => {});
+        dropDemoRecords().then(() => pullServerRecords()).then(() => pushOwnedRecords()).catch(() => {});
       })
       .catch(() => window.location.replace("/login"));
     return () => { cancel = true; };

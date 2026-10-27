@@ -67,7 +67,6 @@ export const AFFECT_TAGS = [
   "Content",
   "Hopeful",
 ];
-export const STEADY_AFFECT = new Set(["Elevated", "Calm", "Content", "Hopeful"]);
 export const SOMATIC_TAGS = [
   "Headache",
   "Body aches",

@@ -1,6 +1,20 @@
 import Dexie, { type Table } from "dexie";
 import type { CheckIn, Episode, Screening, Settings } from "./types";
-import { buildSeed } from "./seed";
+
+const DEMO_REMOVED = "clintrack-demo-removed";
+const DEMO_SCREENS: { kind: Screening["kind"]; answers: string; note: string }[] = [
+  { kind: "PHQ-9", answers: "2,2,3,2,1,2,2,1,0", note: "Baseline" },
+  { kind: "GAD-7", answers: "3,2,3,2,1,2,1", note: "Baseline" },
+  { kind: "PHQ-9", answers: "2,2,2,2,1,1,2,1,0", note: "After dose adjustment" },
+  { kind: "GAD-7", answers: "2,2,2,2,1,1,1", note: "After dose adjustment" },
+  { kind: "PHQ-9", answers: "1,1,2,1,1,1,1,0,0", note: "" },
+  { kind: "GAD-7", answers: "2,1,1,1,1,1,1", note: "" },
+];
+
+function isDemoScreen(row: Screening) {
+  const answers = row.answers.join(",");
+  return DEMO_SCREENS.some((sample) => sample.kind === row.kind && sample.answers === answers && sample.note === row.note);
+}
 
 class ClinTrackDB extends Dexie {
   checkIns!: Table<CheckIn, number>;
@@ -27,19 +41,25 @@ class ClinTrackDB extends Dexie {
 
 export const db = new ClinTrackDB();
 
-export async function seedIfFirstLaunch() {
+export async function dropDemoRecords() {
   if (typeof window === "undefined") return;
-  if (localStorage.getItem("clintrack-seeded")) return;
-  localStorage.setItem("clintrack-seeded", "1");
-  const count = await db.checkIns.count();
-  if (count > 0) return;
-  const s = buildSeed();
+  if (localStorage.getItem(DEMO_REMOVED) === "1") return;
   await db.transaction("rw", [db.checkIns, db.episodes, db.screenings, db.settings], async () => {
-    await db.checkIns.bulkAdd(s.checkIns);
-    await db.episodes.bulkAdd(s.episodes);
-    await db.screenings.bulkAdd(s.screenings);
-    await db.settings.put({ key: "profile", patientName: "Alex Doe" });
+    const checkInIds = await db.checkIns.filter((row) => !row.clientId).primaryKeys();
+    const episodeIds = await db.episodes.filter((row) => !row.clientId).primaryKeys();
+    await db.checkIns.bulkDelete(checkInIds);
+    await db.episodes.bulkDelete(episodeIds);
+    const screens = await db.screenings.toArray();
+    if (screens.some((row) => row.note === "Baseline")) {
+      const ids = screens.flatMap((row) => (row.id !== undefined && isDemoScreen(row) ? [row.id] : []));
+      await db.screenings.bulkDelete(ids);
+    }
+    if (checkInIds.length || episodeIds.length) {
+      const profile = await db.settings.get("profile");
+      if (profile?.patientName === "Alex Doe") await db.settings.delete("profile");
+    }
   });
+  localStorage.setItem(DEMO_REMOVED, "1");
 }
 
 export async function getPatientName(): Promise<string> {
@@ -70,10 +90,8 @@ export async function importAll(data: unknown) {
     await db.screenings.bulkAdd(d.screenings as Screening[]);
     if (Array.isArray(d.settings)) await db.settings.bulkAdd(d.settings as Settings[]);
   });
-  localStorage.setItem("clintrack-seeded", "1");
 }
 
 export async function clearAll() {
   await Promise.all([db.checkIns.clear(), db.episodes.clear(), db.screenings.clear(), db.settings.clear()]);
-  localStorage.setItem("clintrack-seeded", "1");
 }

@@ -1,6 +1,6 @@
 # ClinTrack
 
-Privacy-first PWA for tracking mood, somatic symptoms and functional impact, and producing a one-page clinical summary for your doctor. Sign-in is required. The first visit creates the only account. Check-ins and episodes for that account are stored in IndexedDB and in `data/clintrack.sqlite`. Screeners stay on-device. Thirty days of mock data are seeded on first launch.
+Privacy-first PWA for tracking mood, somatic symptoms and functional impact, and producing a one-page clinical summary for your doctor. Sign-in is required. The first visit creates the only account. Check-ins and episodes for that account are stored in IndexedDB and in `data/clintrack.sqlite`. Screeners stay on-device. Charts and the summary use only the entries you save.
 
 ```
 npm install
