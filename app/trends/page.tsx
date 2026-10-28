@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis } from "recharts";
 import { db } from "@/lib/db";
-import { buildDailySeries, fmt, frequency, inRange, sleepMoodCorrelation } from "@/lib/analytics";
+import { buildDailySeries, countTags, fmt, frequency, inRange, sleepMoodCorrelation } from "@/lib/analytics";
 import { Card, Segmented, PageHeader, Empty } from "@/components/ui";
 
 function CountList({ label, rows }: { label: string; rows: { name: string; count: number }[] }) {
@@ -55,7 +55,7 @@ export default function TrendsPage() {
     return {
       series,
       corr: sleepMoodCorrelation(ci),
-      symptoms: frequency(ci, "somatic").slice(0, 8),
+      symptoms: countTags([...ci.map((row) => row.somatic), ...inRange(data.episodes, days).map((row) => row.somatic)]).slice(0, 8),
       affect: frequency(ci, "affect").slice(0, 8),
     };
   }, [data, days]);

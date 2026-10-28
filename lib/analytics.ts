@@ -79,8 +79,12 @@ export function sleepMoodCorrelation(checkIns: CheckIn[]) {
 }
 
 export function frequency(checkIns: CheckIn[], field: "somatic" | "functional" | "affect") {
+  return countTags(checkIns.map((c) => c[field]));
+}
+
+export function countTags(groups: string[][]) {
   const m = new Map<string, number>();
-  checkIns.forEach((c) => c[field].forEach((t) => m.set(t, (m.get(t) ?? 0) + 1)));
+  groups.forEach((tags) => tags.forEach((tag) => m.set(tag, (m.get(tag) ?? 0) + 1)));
   return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
 }
 

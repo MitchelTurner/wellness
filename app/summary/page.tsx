@@ -4,7 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Printer } from "lucide-react";
 import { Line, LineChart, ResponsiveContainer, YAxis } from "recharts";
 import { db } from "@/lib/db";
-import { buildDailySeries, fmt, fmtDate, frequency, inRange, moodChange, summaryMetrics, treatmentResponse } from "@/lib/analytics";
+import { buildDailySeries, countTags, fmt, fmtDate, frequency, inRange, moodChange, summaryMetrics, treatmentResponse } from "@/lib/analytics";
 import { severity } from "@/lib/scoring";
 import { STEADY_FUNCTION } from "@/lib/types";
 import { Segmented, primaryBtn, PageHeader } from "@/components/ui";
@@ -50,7 +50,7 @@ export default function SummaryPage() {
       m: summaryMetrics(ci, days),
       ep,
       series: buildDailySeries(days, ci, [], []),
-      somatic: frequency(ci, "somatic"),
+      somatic: countTags([...ci.map((row) => row.somatic), ...ep.map((row) => row.somatic)]),
       affect: frequency(ci, "affect"),
       functional: frequency(ci, "functional").filter((f) => !STEADY_FUNCTION.has(f.name)),
       treat: treatmentResponse(ep),
