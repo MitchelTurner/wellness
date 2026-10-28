@@ -15,7 +15,7 @@ function CountList({ label, rows }: { label: string; rows: { name: string; count
         <ul className="space-y-2">
           {rows.map((row) => (
             <li key={row.name} className="flex items-center gap-3 text-sm">
-              <span className="w-44 shrink-0 leading-snug text-ink">{row.name}</span>
+              <span className="w-44 shrink-0 truncate leading-snug text-ink" title={row.name}>{row.name}</span>
               <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sand">
                 <span className="block h-full rounded-full bg-forest" style={{ width: `${Math.max(8, (row.count / max) * 100)}%` }} />
               </span>
@@ -62,7 +62,7 @@ export default function TrendsPage() {
 
   return (
     <>
-      <PageHeader kicker="Patterns" title="Trends" lede="Daily mood against hours of sleep, then the symptoms and feelings recorded on those check-ins. Dots mark acute events. Diamonds mark a screener." />
+      <PageHeader kicker="Patterns" title="Trends" lede="Mood, anxiety, and sleep from saved check-ins. Dots mark acute events. Diamonds mark a screener day, and the score chart below uses the actual totals." />
       <Card>
         <Segmented label="Range" options={["14 days", "30 days"] as const} value={range} onChange={setRange} />
         {series.some((point) => point.mood !== null) ? (
@@ -72,10 +72,12 @@ export default function TrendsPage() {
               <CartesianGrid stroke="#ece6dc" vertical={false} />
               <XAxis dataKey="label" tick={tick} axisLine={false} tickLine={false} interval={days > 14 ? 3 : 1} />
               <YAxis yAxisId="mood" domain={[-6, 6]} tick={tick} axisLine={false} tickLine={false} width={28} />
+              <YAxis yAxisId="anxiety" hide domain={[0, 10]} />
               <YAxis yAxisId="sleep" orientation="right" domain={[0, 12]} tick={tick} axisLine={false} tickLine={false} width={28} />
               <Tooltip {...tip} />
               <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
               <Line yAxisId="mood" type="monotone" dataKey="mood" name="Mood" stroke="#1c3d32" strokeWidth={2.25} dot={{ r: 3, fill: "#1c3d32", strokeWidth: 0 }} connectNulls={false} />
+              <Line yAxisId="anxiety" type="monotone" dataKey="anxiety" name="Anxiety" stroke="#9f3d38" strokeWidth={2} dot={{ r: 3, fill: "#9f3d38", strokeWidth: 0 }} connectNulls={false} />
               <Line yAxisId="sleep" type="monotone" dataKey="sleep" name="Sleep (h)" stroke="#a68446" strokeWidth={2} strokeDasharray="4 4" dot={{ r: 3, fill: "#a68446", strokeWidth: 0 }} connectNulls={false} />
               <Scatter yAxisId="mood" dataKey="episodeMarker" name="Acute episode" fill="#9f3d38" />
               <Scatter yAxisId="mood" dataKey="screenMarker" name="Screener" fill="#161513" shape="diamond" />
@@ -84,6 +86,25 @@ export default function TrendsPage() {
           </div>
         ) : (
           <Empty>No check-ins in this range yet. Saved check-ins are the only points on this chart.</Empty>
+        )}
+      </Card>
+      <Card title="Screener scores">
+        {series.some((point) => point.phq9Score !== null || point.gad7Score !== null) ? (
+          <div className="h-52 w-full" role="img" aria-label="PHQ-9 and GAD-7 totals">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={series} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke="#ece6dc" vertical={false} />
+                <XAxis dataKey="label" tick={tick} axisLine={false} tickLine={false} interval={days > 14 ? 3 : 1} />
+                <YAxis domain={[0, 27]} tick={tick} axisLine={false} tickLine={false} width={28} />
+                <Tooltip {...tip} />
+                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                <Line type="monotone" dataKey="phq9Score" name="PHQ-9" stroke="#1c3d32" strokeWidth={2.25} dot={{ r: 3, fill: "#1c3d32", strokeWidth: 0 }} connectNulls={false} />
+                <Line type="monotone" dataKey="gad7Score" name="GAD-7" stroke="#9f3d38" strokeWidth={2} dot={{ r: 3, fill: "#9f3d38", strokeWidth: 0 }} connectNulls={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <Empty>No PHQ-9 or GAD-7 scores in this range.</Empty>
         )}
       </Card>
       <Card title="Check-in symptoms">

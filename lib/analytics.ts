@@ -23,10 +23,13 @@ export interface DayPoint {
   label: string;
   ts: number;
   mood: number | null;
+  anxiety: number | null;
   sleep: number | null;
   episodePeak: number | null;
   phq9: number | null;
   gad7: number | null;
+  phq9Score: number | null;
+  gad7Score: number | null;
 }
 
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
@@ -43,16 +46,22 @@ export function buildDailySeries(days: number, checkIns: CheckIn[], episodes: Ep
     const phq = screenings.filter((s) => s.kind === "PHQ-9" && dayKey(s.timestamp) === key);
     const gad = screenings.filter((s) => s.kind === "GAD-7" && dayKey(s.timestamp) === key);
     const m = mean(ci.map((c) => c.mood));
+    const a = mean(ci.map((c) => c.anxiety));
     const s = mean(ci.map((c) => c.sleepHours));
+    const phqScore = mean(phq.map((row) => row.total));
+    const gadScore = mean(gad.map((row) => row.total));
     out.push({
       day: key,
       label: `${d.getMonth() + 1}/${d.getDate()}`,
       ts: d.getTime(),
       mood: m === null ? null : Math.round(m * 10) / 10,
+      anxiety: a === null ? null : Math.round(a * 10) / 10,
       sleep: s === null ? null : Math.round(s * 10) / 10,
       episodePeak: ep.length ? Math.max(...ep.map((e) => e.peak)) : null,
       phq9: phq.length ? -5.5 : null,
       gad7: gad.length ? -5.5 : null,
+      phq9Score: phqScore === null ? null : Math.round(phqScore * 10) / 10,
+      gad7Score: gadScore === null ? null : Math.round(gadScore * 10) / 10,
     });
   }
   return out;
@@ -95,14 +104,26 @@ export function treatmentResponse(episodes: Episode[]) {
   const stats = new Map<string, { uses: number; relieved: number; partial: number }>();
   episodes.forEach((e) =>
     e.interventions.forEach((i) => {
-      const s = stats.get(i.name) ?? { uses: 0, relieved: 0, partial: 0 };
+      const label = i.detail?.trim() || i.name;
+      const s = stats.get(label) ?? { uses: 0, relieved: 0, partial: 0 };
       s.uses++;
       if (i.response === "Relieved") s.relieved++;
       if (i.response === "Partial") s.partial++;
-      stats.set(i.name, s);
+      stats.set(label, s);
     }),
   );
   return [...stats.entries()].map(([name, s]) => ({ name, ...s, efficacy: Math.round(((s.relieved + s.partial * 0.5) / s.uses) * 100) }));
+}
+
+export function moodChange(checkIns: CheckIn[], days: number) {
+  const start = startOfRange(days);
+  const priorStart = start - days * DAY;
+  const current = checkIns.filter((c) => c.timestamp >= start);
+  const prior = checkIns.filter((c) => c.timestamp >= priorStart && c.timestamp < start);
+  if (!current.length || !prior.length) return null;
+  const avg = (rows: CheckIn[]) => rows.reduce((sum, row) => sum + row.mood, 0) / rows.length;
+  const delta = Math.round((avg(current) - avg(prior)) * 10) / 10;
+  return Object.is(delta, -0) ? 0 : delta;
 }
 
 export const fmt = (n: number | null, d = 1) => (n === null ? "–" : n.toFixed(d));

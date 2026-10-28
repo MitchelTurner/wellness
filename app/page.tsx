@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { deleteStoredCheckIn, saveCheckIn } from "@/lib/persist";
-import { AFFECT_TAGS, SOMATIC_TAGS, FUNCTIONAL_TAGS, type SleepQuality } from "@/lib/types";
+import { AFFECT_TAGS, SOMATIC_TAGS, FUNCTIONAL_TAGS, type CheckIn, type SleepQuality } from "@/lib/types";
 import { fmtDate, toLocalInput } from "@/lib/analytics";
-import { useNowInput, Card, SliderField, TagSelect, Segmented, primaryBtn, inputCls, useToast, PageHeader, AcuteTrigger, quietDanger } from "@/components/ui";
+import { useNowInput, Card, SliderField, TagSelect, Segmented, primaryBtn, secondaryBtn, inputCls, useToast, PageHeader, AcuteTrigger, quietDanger } from "@/components/ui";
 
 const MOOD_WORD = ["Very low", "Very low", "Low", "Low", "Subdued", "Even", "Steady", "Lifted", "High", "Very high", "Very high"];
 
@@ -33,6 +33,7 @@ export default function CheckInPage() {
   const [functional, setFunctional] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const [when, setWhen] = useNowInput();
+  const [editing, setEditing] = useState<string | null>(null);
   const [toast, toastEl] = useToast();
   const [kicker, setKicker] = useState("Today");
 
@@ -49,15 +50,66 @@ export default function CheckInPage() {
     return rows.filter((row) => row.clientId);
   }, []);
 
+  function resetForm() {
+    setEditing(null);
+    setAffect([]);
+    setSomatic([]);
+    setFunctional([]);
+    setNote("");
+    setMood(0);
+    setAnxiety(4);
+    setSleepHours(7);
+    setSleepQuality("Fair");
+    setWhen(toLocalInput(Date.now()));
+  }
+
+  function load(row: CheckIn) {
+    setEditing(row.clientId ?? null);
+    setMood(row.mood);
+    setAnxiety(row.anxiety);
+    setSleepHours(row.sleepHours);
+    setSleepQuality(row.sleepQuality);
+    setAffect(row.affect);
+    setSomatic(row.somatic);
+    setFunctional(row.functional);
+    setNote(row.note);
+    setWhen(toLocalInput(row.timestamp));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function copyLast() {
+    const rows = await db.checkIns.orderBy("timestamp").reverse().toArray();
+    const last = rows.find((row) => row.clientId && row.clientId !== editing);
+    if (!last) {
+      toast("No earlier check-in to copy");
+      return;
+    }
+    setAffect([...last.affect]);
+    setSomatic([...last.somatic]);
+    setFunctional([...last.functional]);
+    toast("Copied tags from the last check-in");
+  }
+
   async function save() {
     if (saving) return;
     setSaving(true);
     const ts = new Date(when).getTime();
+    const wasEdit = !!editing;
     try {
-      const ok = await saveCheckIn({ timestamp: Number.isNaN(ts) ? Date.now() : ts, mood, anxiety, sleepHours, sleepQuality, affect, somatic, functional, note: note.trim() });
-      setAffect([]); setSomatic([]); setFunctional([]); setNote(""); setMood(0); setAnxiety(4);
-      setWhen(toLocalInput(Date.now()));
-      toast(ok ? "Check-in saved" : "Saved on this device. The database could not be reached.");
+      const ok = await saveCheckIn({
+        clientId: editing ?? undefined,
+        timestamp: Number.isNaN(ts) ? Date.now() : ts,
+        mood,
+        anxiety,
+        sleepHours,
+        sleepQuality,
+        affect,
+        somatic,
+        functional,
+        note: note.trim(),
+      });
+      resetForm();
+      toast(ok ? (wasEdit ? "Check-in updated" : "Check-in saved") : "Saved on this device. The database could not be reached.");
     } finally {
       setSaving(false);
     }
@@ -74,14 +126,18 @@ export default function CheckInPage() {
         <Segmented label="Sleep quality" options={["Poor", "Fair", "Good"] as const} value={sleepQuality} onChange={setSleepQuality} />
       </Card>
       <Card>
+        {editing && <p className="mb-4 text-sm text-muted">Editing a saved check-in. Saving keeps the same record.</p>}
         <TagSelect label="Affect" options={AFFECT_TAGS} value={affect} onChange={setAffect} />
-        <TagSelect label="Symptoms" options={SOMATIC_TAGS} value={somatic} onChange={setSomatic} />
+        <TagSelect label="Symptoms" options={SOMATIC_TAGS} value={somatic} onChange={setSomatic} allowCustom />
         <TagSelect label="Functional impact" options={FUNCTIONAL_TAGS} value={functional} onChange={setFunctional} />
+        <button type="button" className={`${secondaryBtn} mb-2`} onClick={copyLast}>Same as last time</button>
+        <p className="mb-5 text-center text-xs text-muted">Copies affect, symptoms, and function. Mood, anxiety, and sleep stay as you set them.</p>
         <label className="mb-2 block text-[13px] font-medium text-muted" htmlFor="note">Note</label>
         <input id="note" maxLength={160} className={`${inputCls} mb-4`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="One sentence about the day" />
         <label className="mb-2 block text-[13px] font-medium text-muted" htmlFor="when">Time</label>
         <input id="when" type="datetime-local" className={`${inputCls} mb-5`} value={when} onChange={(e) => setWhen(e.target.value)} />
-        <button className={primaryBtn} onClick={save} disabled={saving}>{saving ? "Saving…" : "Save check-in"}</button>
+        <button className={primaryBtn} onClick={save} disabled={saving}>{saving ? "Saving…" : editing ? "Update check-in" : "Save check-in"}</button>
+        {editing && <button type="button" className={`${secondaryBtn} mt-2`} onClick={resetForm}>Cancel</button>}
         <p className="mt-3 text-center text-xs text-muted">Saved on this device and in the app database.</p>
       </Card>
       {!!saved?.length && (
@@ -100,7 +156,10 @@ export default function CheckInPage() {
                   <TagLine label="Symptoms" items={row.somatic} />
                   <TagLine label="Function" items={row.functional} />
                 </div>
-                <button className={quietDanger} onClick={() => deleteStoredCheckIn(row).then((ok) => toast(ok ? "Check-in deleted" : "Removed on this device. The database could not be reached."))}>Delete</button>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <button className="text-xs font-medium text-muted transition hover:text-ink" onClick={() => load(row)}>Edit</button>
+                  <button className={quietDanger} onClick={() => deleteStoredCheckIn(row).then((ok) => toast(ok ? "Check-in deleted" : "Removed on this device. The database could not be reached."))}>Delete</button>
+                </div>
               </li>
             ))}
           </ul>

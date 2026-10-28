@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
+import { deleteStoredScreening, saveScreening } from "@/lib/persist";
 import { ANSWER_OPTIONS, GAD7_ITEMS, MAX_SCORE, PHQ9_ITEMS, severity, sumAnswers } from "@/lib/scoring";
 import { fmtDate } from "@/lib/analytics";
 import { useNowInput, Card, Segmented, primaryBtn, inputCls, useToast, PageHeader, Empty, quietDanger, severityTone } from "@/components/ui";
@@ -26,15 +27,15 @@ export default function ScreenerPage() {
 
   async function save() {
     const ts = new Date(when).getTime();
-    await db.screenings.add({ timestamp: Number.isNaN(ts) ? Date.now() : ts, kind, answers: cur as number[], total, note: note.trim() });
+    const ok = await saveScreening({ timestamp: Number.isNaN(ts) ? Date.now() : ts, kind, answers: cur as number[], total, note: note.trim() });
     setAnswers((a) => ({ ...a, [kind]: Array(items.length).fill(null) }));
     setNote("");
-    toast(`${kind} saved: ${total} (${severity(kind, total)})`);
+    toast(ok ? `${kind} saved: ${total} (${severity(kind, total)})` : "Saved on this device. The database could not be reached.");
   }
 
   return (
     <>
-      <PageHeader kicker="Every two weeks" title="Screeners" lede="PHQ-9 and GAD-7, kept next to the daily record. These scores are not a diagnosis." />
+      <PageHeader kicker="Every two weeks" title="Screeners" lede="PHQ-9 and GAD-7, stored with your account. These scores are not a diagnosis." />
       <Card>
         <Segmented label="Questionnaire" options={["PHQ-9", "GAD-7"] as const} value={kind} onChange={setKind} />
         <div className="mb-5 h-1 overflow-hidden rounded-full bg-sand">
@@ -85,7 +86,7 @@ export default function ScreenerPage() {
         <label htmlFor="sdate" className="mb-2 block text-[13px] font-medium text-muted">Date</label>
         <input id="sdate" type="datetime-local" className={`${inputCls} mb-4`} value={when} onChange={(e) => setWhen(e.target.value)} />
         <label htmlFor="snote" className="mb-2 block text-[13px] font-medium text-muted">Context</label>
-        <input id="snote" className={`${inputCls} mb-5`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Medication or routine change" />
+        <input id="snote" maxLength={160} className={`${inputCls} mb-5`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Medication or routine change" />
         <button className={primaryBtn} disabled={!complete} onClick={save}>{complete ? "Save result" : "Answer all items to save"}</button>
       </Card>
       <Card title="History">
@@ -103,7 +104,7 @@ export default function ScreenerPage() {
                     </div>
                     <div className="mt-1 text-xs text-muted">{fmtDate(s.timestamp)}{s.note ? ` · ${s.note}` : ""}</div>
                   </div>
-                  <button className={quietDanger} onClick={() => s.id !== undefined && db.screenings.delete(s.id)}>Delete</button>
+                  <button className={quietDanger} onClick={() => deleteStoredScreening(s).then((ok) => toast(ok ? "Screener deleted" : "Removed on this device. The database could not be reached."))}>Delete</button>
                 </li>
               );
             })}

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ClipboardCheck, Zap, ListChecks, LineChart, FileText, Settings } from "lucide-react";
-import { dropDemoRecords } from "@/lib/db";
+import { db, dropDemoRecords } from "@/lib/db";
 import { pullServerRecords, pushOwnedRecords, signOut } from "@/lib/persist";
 
 const NAV = [
@@ -47,6 +47,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       })
       .catch(() => window.location.replace("/login"));
     return () => { cancel = true; };
+  }, [path]);
+
+  useEffect(() => {
+    if (path === "/login") return;
+    let cancel = false;
+    async function maybeRemind() {
+      if (cancel || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+      const row = await db.settings.get("reminder");
+      if (!row?.reminderTime || !/^\d{2}:\d{2}$/.test(row.reminderTime)) return;
+      const now = new Date();
+      const [hh, mm] = row.reminderTime.split(":").map(Number);
+      const due = new Date(now);
+      due.setHours(hh, mm, 0, 0);
+      if (now < due) return;
+      const key = `clintrack-reminded-${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, "1");
+      const notice = new Notification("ClinTrack check-in", { body: "A minute for mood, sleep, and how the day went.", tag: "clintrack-checkin" });
+      notice.onclick = () => {
+        window.focus();
+        if (window.location.pathname !== "/") {
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+          window.location.assign("/");
+        }
+      };
+    }
+    void maybeRemind();
+    const timer = window.setInterval(() => void maybeRemind(), 30000);
+    return () => {
+      cancel = true;
+      window.clearInterval(timer);
+    };
   }, [path]);
 
   const settingsOn = path.startsWith("/settings");

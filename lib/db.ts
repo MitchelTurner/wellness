@@ -36,6 +36,12 @@ class ClinTrackDB extends Dexie {
       screenings: "++id, timestamp, kind",
       settings: "key",
     });
+    this.version(3).stores({
+      checkIns: "++id, timestamp, clientId",
+      episodes: "++id, timestamp, clientId",
+      screenings: "++id, timestamp, kind, clientId",
+      settings: "key",
+    });
   }
 }
 

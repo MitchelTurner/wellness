@@ -30,12 +30,13 @@ export interface Episode {
   peak: number; // 1..10
   type: string;
   somatic: string[];
-  interventions: { name: Intervention; response: Response }[];
+  interventions: { name: Intervention; response: Response; detail?: string }[];
   note: string;
 }
 
 export interface Screening {
   id?: number;
+  clientId?: string;
   timestamp: number;
   kind: "PHQ-9" | "GAD-7";
   answers: number[];
@@ -43,9 +44,17 @@ export interface Screening {
   note: string;
 }
 
+export interface Medication {
+  id: string;
+  name: string;
+  dose: string;
+}
+
 export interface Settings {
-  key: "profile";
-  patientName: string;
+  key: "profile" | "reminder";
+  patientName?: string;
+  medications?: Medication[];
+  reminderTime?: string;
 }
 
 export const AFFECT_TAGS = [

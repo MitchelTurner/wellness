@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { DatabaseSync } from "node:sqlite";
-import type { CheckInRecord, EpisodeRecord } from "./records";
+import type { CheckInRecord, EpisodeRecord, ProfileRecord, ScreeningRecord } from "./records";
 
 let database: DatabaseSync | null = null;
 
@@ -46,9 +46,24 @@ function db() {
         user_id INTEGER NOT NULL,
         expires_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS screenings (
+        client_id TEXT PRIMARY KEY,
+        user_id INTEGER,
+        timestamp INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        answers TEXT NOT NULL,
+        total INTEGER NOT NULL,
+        note TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS profiles (
+        user_id INTEGER PRIMARY KEY,
+        patient_name TEXT NOT NULL,
+        medications TEXT NOT NULL
+      );
     `);
     ensureColumn("check_ins", "user_id", "ALTER TABLE check_ins ADD COLUMN user_id INTEGER");
     ensureColumn("episodes", "user_id", "ALTER TABLE episodes ADD COLUMN user_id INTEGER");
+    ensureColumn("screenings", "user_id", "ALTER TABLE screenings ADD COLUMN user_id INTEGER");
   }
   return database;
 }
@@ -91,12 +106,17 @@ export function createFirstUser(username: string, passwordHash: string): number 
     const id = Number(result.lastInsertRowid);
     database.prepare("UPDATE check_ins SET user_id = ? WHERE user_id IS NULL").run(id);
     database.prepare("UPDATE episodes SET user_id = ? WHERE user_id IS NULL").run(id);
+    database.prepare("UPDATE screenings SET user_id = ? WHERE user_id IS NULL").run(id);
     database.exec("COMMIT");
     return id;
   } catch (error) {
     database.exec("ROLLBACK");
     throw error;
   }
+}
+
+export function updatePassword(userId: number, passwordHash: string) {
+  db().prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, userId);
 }
 
 export function findUserByUsername(username: string): Account | null {
@@ -205,4 +225,58 @@ export function deleteAllCheckInRows(userId: number) {
 
 export function deleteAllEpisodeRows(userId: number) {
   db().prepare("DELETE FROM episodes WHERE user_id = ?").run(userId);
+}
+
+export function saveScreeningRow(userId: number, row: ScreeningRecord) {
+  const result = db().prepare(`
+    INSERT INTO screenings (client_id, user_id, timestamp, kind, answers, total, note)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(client_id) DO UPDATE SET
+      timestamp = excluded.timestamp,
+      kind = excluded.kind,
+      answers = excluded.answers,
+      total = excluded.total,
+      note = excluded.note
+    WHERE screenings.user_id = excluded.user_id
+  `).run(row.clientId, userId, row.timestamp, row.kind, json(row.answers), row.total, row.note);
+  return result.changes > 0;
+}
+
+export function listScreeningRows(userId: number): ScreeningRecord[] {
+  const rows = db().prepare("SELECT * FROM screenings WHERE user_id = ? ORDER BY timestamp DESC").all(userId) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    clientId: String(row.client_id),
+    timestamp: Number(row.timestamp),
+    kind: row.kind as ScreeningRecord["kind"],
+    answers: parseJson<number[]>(row.answers, []),
+    total: Number(row.total),
+    note: String(row.note ?? ""),
+  }));
+}
+
+export function deleteScreeningRow(userId: number, clientId: string) {
+  db().prepare("DELETE FROM screenings WHERE client_id = ? AND user_id = ?").run(clientId, userId);
+}
+
+export function deleteAllScreeningRows(userId: number) {
+  db().prepare("DELETE FROM screenings WHERE user_id = ?").run(userId);
+}
+
+export function saveProfileRow(userId: number, row: ProfileRecord) {
+  db().prepare(`
+    INSERT INTO profiles (user_id, patient_name, medications) VALUES (?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      patient_name = excluded.patient_name,
+      medications = excluded.medications
+  `).run(userId, row.patientName, json(row.medications));
+}
+
+export function getProfileRow(userId: number): ProfileRecord | null {
+  const row = db().prepare("SELECT patient_name, medications FROM profiles WHERE user_id = ?").get(userId) as { patient_name: string; medications: string } | undefined;
+  if (!row) return null;
+  return { patientName: String(row.patient_name), medications: parseJson(row.medications, []) };
+}
+
+export function deleteProfileRow(userId: number) {
+  db().prepare("DELETE FROM profiles WHERE user_id = ?").run(userId);
 }

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
-import { countUsers, createFirstUser, createSession, deleteSession, findUserByUsername, userForSession } from "./server-db";
+import { countUsers, createFirstUser, createSession, deleteSession, findUserByUsername, updatePassword, userForSession } from "./server-db";
 
 const COOKIE = "clintrack_session";
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -96,6 +96,19 @@ export async function loginAccount(username: string, password: string) {
   clearAttempts(key);
   await writeSession(user.id);
   return { username: user.username } as const;
+}
+
+export async function changePassword(current: string, next: string) {
+  const session = await currentUser();
+  if (!session) return { error: "Sign in again.", status: 401 } as const;
+  if (next.length < 8 || next.length > 200) return { error: "Use at least 8 characters.", status: 400 } as const;
+  const key = `pw:${session.username.toLowerCase()}`;
+  if (tooManyAttempts(key)) return { error: "Too many attempts. Wait a few minutes and try again.", status: 429 } as const;
+  const account = findUserByUsername(session.username);
+  if (!account || !verifyPassword(current, account.passwordHash)) return { error: "Current password doesn’t match.", status: 401 } as const;
+  clearAttempts(key);
+  updatePassword(account.id, hashPassword(next));
+  return { ok: true } as const;
 }
 
 export async function logoutAccount() {

@@ -71,13 +71,21 @@ export function SliderField({ label, value, min, max, step = 1, onChange, hint, 
   );
 }
 
-export function TagSelect({ label, options, value, onChange }: { label: string; options: string[]; value: string[]; onChange: (v: string[]) => void }) {
+export function TagSelect({ label, options, value, onChange, allowCustom = false }: { label: string; options: string[]; value: string[]; onChange: (v: string[]) => void; allowCustom?: boolean }) {
+  const [draft, setDraft] = useState("");
   const toggle = (o: string) => onChange(value.includes(o) ? value.filter((x) => x !== o) : [...value, o]);
+  const extras = value.filter((item) => !options.includes(item));
+  function addCustom() {
+    const next = draft.trim().slice(0, 80);
+    setDraft("");
+    if (!next || value.includes(next) || value.length >= 40) return;
+    onChange([...value, next]);
+  }
   return (
     <fieldset className="mb-5 last:mb-0">
       <legend className="mb-2 text-[13px] font-medium text-muted">{label}</legend>
       <div className="flex flex-wrap gap-2">
-        {options.map((o) => {
+        {[...options, ...extras].map((o) => {
           const on = value.includes(o);
           return (
             <button
@@ -92,6 +100,25 @@ export function TagSelect({ label, options, value, onChange }: { label: string; 
           );
         })}
       </div>
+      {allowCustom && (
+        <div className="mt-3 flex gap-2">
+          <input
+            aria-label={`Add your own ${label.toLowerCase()}`}
+            maxLength={80}
+            className={inputCls}
+            value={draft}
+            placeholder="Add your own"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addCustom();
+              }
+            }}
+          />
+          <button type="button" className="shrink-0 rounded-full bg-white px-4 text-sm font-medium text-ink ring-1 ring-line" onClick={addCustom}>Add</button>
+        </div>
+      )}
     </fieldset>
   );
 }

@@ -16,7 +16,11 @@ function EpisodeModal({ onClose, onSaved }: { onClose: () => void; onSaved: (ok:
   const [type, setType] = useState(EPISODE_TYPES[0]);
   const [somatic, setSomatic] = useState<string[]>([]);
   const [used, setUsed] = useState<Partial<Record<Intervention, Response>>>({});
+  const [prnDetail, setPrnDetail] = useState("");
+  const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const profile = useLiveQuery(() => db.settings.get("profile"), []);
+  const medications = profile?.medications ?? [];
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -48,8 +52,12 @@ function EpisodeModal({ onClose, onSaved }: { onClose: () => void; onSaved: (ok:
         peak,
         type,
         somatic,
-        interventions: (Object.entries(used) as [Intervention, Response][]).map(([name, response]) => ({ name, response })),
-        note: "",
+        interventions: (Object.entries(used) as [Intervention, Response][]).map(([name, response]) => ({
+          name,
+          response,
+          ...(name === "PRN Medication" && prnDetail ? { detail: prnDetail } : {}),
+        })),
+        note: note.trim(),
       });
       onSaved(ok);
     } finally {
@@ -80,13 +88,25 @@ function EpisodeModal({ onClose, onSaved }: { onClose: () => void; onSaved: (ok:
         <label htmlFor="dur" className="mb-2 block text-[13px] font-medium text-muted">Estimated duration (minutes)</label>
         <input id="dur" type="number" min={1} className={`${inputCls} mb-5`} value={duration} onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))} />
         <SliderField label="Peak intensity" value={peak} min={1} max={10} onChange={setPeak} hint={["Mild", "Extreme"]} />
-        <TagSelect label="Symptoms" options={EPISODE_SOMATIC} value={somatic} onChange={setSomatic} />
+        <TagSelect label="Symptoms" options={EPISODE_SOMATIC} value={somatic} onChange={setSomatic} allowCustom />
         <div className="mb-5">
           <div className="mb-2 text-[13px] font-medium text-muted">Interventions and response</div>
           <div className="space-y-2">
             {INTERVENTIONS.map((name) => (
               <div key={name} className={`rounded-2xl p-3 ${name in used ? "bg-sand/80" : "bg-white ring-1 ring-line"}`}>
                 <button type="button" aria-pressed={name in used} onClick={() => toggle(name)} className={`rounded-full px-3.5 py-1.5 text-sm font-medium ${name in used ? "bg-ink text-cream" : "bg-cream text-ink ring-1 ring-line"}`}>{name}</button>
+                {name in used && name === "PRN Medication" && (
+                  <label className="mt-3 block text-xs text-muted">
+                    Which medication
+                    <select aria-label="Which medication" className={`${inputCls} mt-1`} value={prnDetail} onChange={(e) => setPrnDetail(e.target.value)}>
+                      <option value="">PRN Medication</option>
+                      {medications.map((med) => {
+                        const label = med.dose ? `${med.name} ${med.dose}` : med.name;
+                        return <option key={med.id} value={label}>{label}</option>;
+                      })}
+                    </select>
+                  </label>
+                )}
                 {name in used && name !== "None" && (
                   <div className="mt-2 flex gap-1 rounded-full bg-white p-1">
                     {RESPONSES.map((r) => (
@@ -98,6 +118,8 @@ function EpisodeModal({ onClose, onSaved }: { onClose: () => void; onSaved: (ok:
             ))}
           </div>
         </div>
+        <label htmlFor="episode-note" className="mb-2 block text-[13px] font-medium text-muted">Note</label>
+        <input id="episode-note" maxLength={160} className={`${inputCls} mb-5`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What was happening" />
         <button className={primaryBtn} onClick={save} disabled={saving}>{saving ? "Saving…" : "Save event"}</button>
       </div>
     </div>
@@ -118,7 +140,7 @@ function Episodes() {
         {episodes === undefined ? null : episodes.length === 0 ? <Empty>No acute events yet.</Empty> : (
           <ul className="space-y-2">
             {episodes.map((e) => {
-              const detail = [...e.somatic, ...e.interventions.map((i) => (i.name === "None" ? "No intervention" : `${i.name}: ${i.response}`))].join(" · ");
+              const detail = [...e.somatic, ...e.interventions.map((i) => (i.name === "None" ? "No intervention" : `${i.detail || i.name}: ${i.response}`))].join(" · ");
               return (
                 <li key={e.id} className="flex items-start justify-between gap-3 rounded-2xl bg-sand/50 px-4 py-3">
                   <div className="min-w-0">
@@ -130,6 +152,7 @@ function Episodes() {
                       {fmtDate(e.timestamp)} {new Date(e.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {e.durationMin} min
                     </div>
                     {detail && <p className="mt-2 text-sm leading-relaxed text-ink/80">{detail}</p>}
+                    {e.note && <p className="mt-2 text-sm text-ink/80">{e.note}</p>}
                   </div>
                   <button className={quietDanger} onClick={() => deleteStoredEpisode(e).then((ok) => toast(ok ? "Event deleted" : "Removed on this device. The database could not be reached."))}>Delete</button>
                 </li>

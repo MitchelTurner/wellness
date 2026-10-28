@@ -4,7 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Printer } from "lucide-react";
 import { Line, LineChart, ResponsiveContainer, YAxis } from "recharts";
 import { db } from "@/lib/db";
-import { buildDailySeries, fmt, fmtDate, frequency, inRange, summaryMetrics, treatmentResponse } from "@/lib/analytics";
+import { buildDailySeries, fmt, fmtDate, frequency, inRange, moodChange, summaryMetrics, treatmentResponse } from "@/lib/analytics";
 import { severity } from "@/lib/scoring";
 import { STEADY_FUNCTION } from "@/lib/types";
 import { Segmented, primaryBtn, PageHeader } from "@/components/ui";
@@ -16,7 +16,7 @@ function Bars({ rows }: { rows: { name: string; count: number }[] }) {
     <ul className="space-y-1">
       {rows.slice(0, 5).map((r) => (
         <li key={r.name} className="flex items-center gap-2 text-xs">
-          <span className="w-36 shrink-0 leading-tight">{r.name}</span>
+          <span className="w-36 shrink-0 truncate leading-tight" title={r.name}>{r.name}</span>
           <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sand">
             <span className="block h-full rounded-full bg-forest" style={{ width: `${Math.max(4, (r.count / max) * 100)}%` }} />
           </span>
@@ -54,6 +54,8 @@ export default function SummaryPage() {
       affect: frequency(ci, "affect"),
       functional: frequency(ci, "functional").filter((f) => !STEADY_FUNCTION.has(f.name)),
       treat: treatmentResponse(ep),
+      moodDelta: moodChange(data.checkIns, days),
+      prnUses: ep.reduce((n, row) => n + row.interventions.filter((item) => item.name === "PRN Medication").length, 0),
       screens: (["PHQ-9", "GAD-7"] as const).map((k) => data.screenings.filter((s) => s.kind === k).slice(-2).reverse()),
     };
   }, [data, days]);
@@ -91,6 +93,9 @@ export default function SummaryPage() {
             ))}
           </section>
           <p className="mb-3 text-[10px] text-muted">Mood scale: −5 very low to +5 very high.</p>
+          {r.moodDelta !== null && (
+            <p className="mb-3 text-sm text-ink">Mean mood {r.moodDelta > 0 ? `+${r.moodDelta.toFixed(1)}` : r.moodDelta.toFixed(1)} vs the prior {days} days.</p>
+          )}
 
           <section className="mb-3 break-inside-avoid">
             <H>Mood trajectory, daily average</H>
@@ -132,7 +137,7 @@ export default function SummaryPage() {
                     </tbody>
                   </table>
                 </div>
-                <p className="mt-1 text-[10px] text-muted">*Relieved = 100%, Partial = 50%, No change = 0%. PRN medication used in {r.treat.find((t) => t.name === "PRN Medication")?.uses ?? 0} episodes.</p>
+                <p className="mt-1 text-[10px] text-muted">*Relieved = 100%, Partial = 50%, No change = 0%. PRN medication used in {r.prnUses} episodes.</p>
               </>
             )}
           </section>
