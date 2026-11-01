@@ -4,19 +4,88 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { deleteStoredCheckIn, saveCheckIn } from "@/lib/persist";
 import { AFFECT_TAGS, SOMATIC_TAGS, FUNCTIONAL_TAGS, type CheckIn, type SleepQuality } from "@/lib/types";
-import { fmtDate, toLocalInput } from "@/lib/analytics";
+import { toLocalInput } from "@/lib/analytics";
 import { useNowInput, Card, SliderField, TagSelect, Segmented, primaryBtn, secondaryBtn, inputCls, useToast, PageHeader, AcuteTrigger, quietDanger } from "@/components/ui";
 
 const MOOD_WORD = ["Very low", "Very low", "Low", "Low", "Subdued", "Even", "Steady", "Lifted", "High", "Very high", "Very high"];
 
+function moodWord(mood: number) {
+  return MOOD_WORD[Math.max(0, Math.min(MOOD_WORD.length - 1, mood + 5))] ?? "Even";
+}
+
+function signedMood(mood: number) {
+  return mood > 0 ? `+${mood}` : `${mood}`;
+}
+
+function hoursPhrase(hours: number) {
+  const shown = Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+  return `${shown} ${hours === 1 ? "hour" : "hours"}`;
+}
+
+function dayStamp(ts: number) {
+  const date = new Date(ts);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function dayLabel(ts: number, now: number) {
+  const date = new Date(ts);
+  const today = new Date(now);
+  const start = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const diff = Math.round((start(today) - start(date)) / 86_400_000);
+  if (now && diff === 0) return "Today";
+  if (now && diff === 1) return "Yesterday";
+  return date.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    ...(date.getFullYear() === today.getFullYear() ? {} : { year: "numeric" }),
+  });
+}
+
+function clock(ts: number) {
+  return new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function groupByDay(rows: CheckIn[], now: number) {
+  const groups: { key: string; label: string; rows: CheckIn[] }[] = [];
+  for (const row of rows) {
+    const key = dayStamp(row.timestamp);
+    const last = groups.at(-1);
+    if (last?.key === key) last.rows.push(row);
+    else groups.push({ key, label: dayLabel(row.timestamp, now), rows: [row] });
+  }
+  return groups;
+}
+
+function moodTone(mood: number) {
+  if (mood < 0) return "text-rose";
+  if (mood > 0) return "text-forest";
+  return "text-ink";
+}
+
+function sleepTone(quality: SleepQuality) {
+  if (quality === "Poor") return "text-rose";
+  if (quality === "Good") return "text-forest";
+  return "text-ink";
+}
+
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[5.25rem_minmax(0,1fr)] items-baseline gap-x-3 px-3 py-2">
+      <dt className="text-sm text-muted">{label}</dt>
+      <dd className="text-sm leading-snug text-ink">{children}</dd>
+    </div>
+  );
+}
+
 function TagLine({ label, items }: { label: string; items: string[] }) {
   if (!items.length) return null;
   return (
-    <div className="mt-2">
-      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">{label}</div>
-      <ul className="mt-1 flex flex-wrap gap-1.5">
+    <div>
+      <div className="text-sm text-muted">{label}</div>
+      <ul className="mt-1.5 flex flex-wrap gap-1.5">
         {items.map((item) => (
-          <li key={item} className="rounded-full bg-white px-2.5 py-1 text-xs text-ink ring-1 ring-line">{item}</li>
+          <li key={item} className="rounded-full bg-white px-2.5 py-1 text-sm text-ink ring-1 ring-line">{item}</li>
         ))}
       </ul>
     </div>
@@ -36,10 +105,13 @@ export default function CheckInPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [toast, toastEl] = useToast();
   const [kicker, setKicker] = useState("Today");
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
-      setKicker(new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }));
+      const current = Date.now();
+      setNow(current);
+      setKicker(new Date(current).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }));
     }, 0);
     return () => clearTimeout(t);
   }, []);
@@ -140,26 +212,53 @@ export default function CheckInPage() {
         {editing && <button type="button" className={`${secondaryBtn} mt-2`} onClick={resetForm}>Cancel</button>}
         <p className="mt-3 text-center text-xs text-muted">Saved on this device and in the app database.</p>
       </Card>
-      {!!saved?.length && (
+      {!!saved?.length && now !== null && (
         <Card title="Saved check-ins">
-          <ul className="space-y-2">
-            {saved.map((row) => (
-              <li key={row.clientId} className="flex items-start justify-between gap-3 rounded-2xl bg-sand/50 px-4 py-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="font-serif text-xl italic tabular-nums">{row.mood > 0 ? `+${row.mood}` : row.mood}</span>
-                    <span className="text-sm text-muted">Anxiety {row.anxiety} · {row.sleepHours} h {row.sleepQuality.toLowerCase()}</span>
-                  </div>
-                  <div className="mt-0.5 text-xs text-muted">{fmtDate(row.timestamp)} {new Date(row.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
-                  {row.note && <p className="mt-2 text-sm text-ink/80">{row.note}</p>}
-                  <TagLine label="Affect" items={row.affect} />
-                  <TagLine label="Symptoms" items={row.somatic} />
-                  <TagLine label="Function" items={row.functional} />
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <button className="text-xs font-medium text-muted transition hover:text-ink" onClick={() => load(row)}>Edit</button>
-                  <button className={quietDanger} onClick={() => deleteStoredCheckIn(row).then((ok) => toast(ok ? "Check-in deleted" : "Removed on this device. The database could not be reached."))}>Delete</button>
-                </div>
+          <p className="mb-4 text-sm text-muted">Newest first. Mood uses the same words as the scale above, from very low to very high.</p>
+          <ul className="space-y-6">
+            {groupByDay(saved, now).map((group) => (
+              <li key={group.key}>
+                <h3 className="mb-2 font-serif text-2xl italic leading-none text-ink">{group.label}</h3>
+                <ul className="space-y-2">
+                  {group.rows.map((row) => {
+                    const active = editing === row.clientId;
+                    const tags = row.affect.length + row.somatic.length + row.functional.length > 0;
+                    return (
+                      <li key={row.clientId} className={`rounded-2xl px-4 py-3.5 ${active ? "bg-white ring-1 ring-ink/15" : "bg-sand/50"}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-ink">{clock(row.timestamp)}</p>
+                            {active && <p className="mt-0.5 text-xs text-muted">Editing this check-in</p>}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-3">
+                            <button type="button" className="text-xs font-medium text-muted transition hover:text-ink" onClick={() => load(row)}>Edit</button>
+                            <button className={quietDanger} onClick={() => deleteStoredCheckIn(row).then((ok) => toast(ok ? "Check-in deleted" : "Removed on this device. The database could not be reached."))}>Delete</button>
+                          </div>
+                        </div>
+                        <dl className={`mt-3 divide-y divide-line/80 overflow-hidden rounded-xl ${active ? "bg-sand/70" : "bg-white/80"}`}>
+                          <Fact label="Mood">
+                            <span className={`font-medium ${moodTone(row.mood)}`}>{moodWord(row.mood)}</span>
+                            <span className="text-muted"> · {signedMood(row.mood)}</span>
+                          </Fact>
+                          <Fact label="Anxiety">{row.anxiety} of 10</Fact>
+                          <Fact label="Sleep">
+                            {hoursPhrase(row.sleepHours)}
+                            <span className="text-muted"> · </span>
+                            <span className={sleepTone(row.sleepQuality)}>{row.sleepQuality}</span>
+                          </Fact>
+                        </dl>
+                        {row.note && <p className="mt-3 text-sm leading-relaxed text-ink">{row.note}</p>}
+                        {tags && (
+                          <div className="mt-3 space-y-3">
+                            <TagLine label="How you felt" items={row.affect} />
+                            <TagLine label="In your body" items={row.somatic} />
+                            <TagLine label="How the day went" items={row.functional} />
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
               </li>
             ))}
           </ul>
