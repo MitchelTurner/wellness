@@ -106,3 +106,30 @@ export function parseProfile(body: unknown): ProfileRecord | null {
   }
   return { patientName: body.patientName.trim(), medications };
 }
+
+const REMINDER_TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+export function parseReminder(body: unknown): { reminderTime: string; timeZone: string } | null {
+  if (!isRecord(body) || typeof body.reminderTime !== "string" || typeof body.timeZone !== "string") return null;
+  if (!REMINDER_TIME.test(body.reminderTime) || body.timeZone.length < 1 || body.timeZone.length > 80) return null;
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: body.timeZone }).format(new Date());
+  } catch {
+    return null;
+  }
+  return { reminderTime: body.reminderTime, timeZone: body.timeZone };
+}
+
+export function parsePushSubscription(body: unknown): { endpoint: string; p256dh: string; auth: string } | null {
+  if (!isRecord(body) || typeof body.endpoint !== "string" || !body.endpoint.startsWith("https://") || body.endpoint.length > 2000) return null;
+  if (!isRecord(body.keys)) return null;
+  const { p256dh, auth } = body.keys;
+  if (typeof p256dh !== "string" || typeof auth !== "string") return null;
+  if (p256dh.length < 8 || p256dh.length > 200 || auth.length < 8 || auth.length > 200) return null;
+  return { endpoint: body.endpoint, p256dh, auth };
+}
+
+export function parsePushEndpoint(body: unknown): string | null {
+  if (!isRecord(body) || typeof body.endpoint !== "string" || !body.endpoint.startsWith("https://") || body.endpoint.length > 2000) return null;
+  return body.endpoint;
+}

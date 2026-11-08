@@ -1,3 +1,4 @@
+import { unsubscribeThisDevice } from "./client-reminder";
 import { db } from "./db";
 import type { CheckInRecord, EpisodeRecord, ProfileRecord, ScreeningRecord } from "./records";
 import type { CheckIn, Episode, Screening } from "./types";
@@ -146,6 +147,7 @@ export async function pushOwnedRecords() {
 
 export async function signOut() {
   const pushed = await pushOwnedRecords();
+  await unsubscribeThisDevice().catch(() => {});
   await fetch("/api/auth/logout", { method: "POST" });
   if (pushed) {
     await db.checkIns.clear();
@@ -164,5 +166,7 @@ export async function clearServerRecords() {
     fetch("/api/episodes", { method: "DELETE" }),
     fetch("/api/screenings", { method: "DELETE" }),
     fetch("/api/profile", { method: "DELETE" }),
+    fetch("/api/reminder", { method: "DELETE" }),
+    fetch("/api/push/subscribe?all=1", { method: "DELETE" }),
   ]);
 }

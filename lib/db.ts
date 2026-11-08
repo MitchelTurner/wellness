@@ -1,5 +1,5 @@
 import Dexie, { type Table } from "dexie";
-import type { CheckIn, Episode, Screening, Settings } from "./types";
+import type { ActivityMark, CheckIn, Episode, Screening, Settings } from "./types";
 
 const DEMO_REMOVED = "clintrack-demo-removed";
 const DEMO_SCREENS: { kind: Screening["kind"]; answers: string; note: string }[] = [
@@ -21,6 +21,7 @@ class ClinTrackDB extends Dexie {
   episodes!: Table<Episode, number>;
   screenings!: Table<Screening, number>;
   settings!: Table<Settings, string>;
+  activity!: Table<ActivityMark, number>;
 
   constructor() {
     super("clintrack");
@@ -41,6 +42,13 @@ class ClinTrackDB extends Dexie {
       episodes: "++id, timestamp, clientId",
       screenings: "++id, timestamp, kind, clientId",
       settings: "key",
+    });
+    this.version(4).stores({
+      checkIns: "++id, timestamp, clientId",
+      episodes: "++id, timestamp, clientId",
+      screenings: "++id, timestamp, kind, clientId",
+      settings: "key",
+      activity: "++id, timestamp",
     });
   }
 }
@@ -99,5 +107,5 @@ export async function importAll(data: unknown) {
 }
 
 export async function clearAll() {
-  await Promise.all([db.checkIns.clear(), db.episodes.clear(), db.screenings.clear(), db.settings.clear()]);
+  await Promise.all([db.checkIns.clear(), db.episodes.clear(), db.screenings.clear(), db.settings.clear(), db.activity.clear()]);
 }

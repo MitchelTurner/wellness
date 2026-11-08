@@ -2,9 +2,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { ClipboardCheck, Zap, ListChecks, LineChart, FileText, Settings } from "lucide-react";
+import { ensureReminderPush, hasCheckedInToday, pushAlertsEnabled, registerServiceWorker, syncStoredReminder } from "@/lib/client-reminder";
 import { db, dropDemoRecords } from "@/lib/db";
 import { pullServerRecords, pushOwnedRecords, signOut } from "@/lib/persist";
+import { localDateKey, localTimeZone, reminderDecision } from "@/lib/reminder-time";
+import { startSleepWatch, stopSleepWatch } from "@/lib/sleep-watch";
 
 const NAV = [
   { href: "/", label: "Check-In", icon: ClipboardCheck },
@@ -26,10 +30,21 @@ function Mark({ className = "size-8" }: { className?: string }) {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const [username, setUsername] = useState("");
+  const sleepWatch = useLiveQuery(() => (path === "/login" ? undefined : db.settings.get("sleepWatch")), [path]);
   useEffect(() => {
-    if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
-    }
+    void registerServiceWorker();
+  }, []);
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === "open-checkin" && window.location.pathname !== "/") {
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+        window.location.assign("/");
+      }
+      if (event.data?.type === "resubscribe") void syncStoredReminder();
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
   }, []);
   useEffect(() => {
     if (path === "/login") return;
@@ -43,28 +58,50 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           return;
         }
         setUsername(data.user.username);
-        dropDemoRecords().then(() => pullServerRecords()).then(() => pushOwnedRecords()).catch(() => {});
+        dropDemoRecords().then(() => pullServerRecords()).then(() => pushOwnedRecords()).then(() => ensureReminderPush()).catch(() => {});
       })
       .catch(() => window.location.replace("/login"));
     return () => { cancel = true; };
   }, [path]);
 
   useEffect(() => {
+    if (path === "/login") {
+      stopSleepWatch();
+      return;
+    }
+    if (sleepWatch?.sleepWatch) startSleepWatch();
+    else stopSleepWatch();
+  }, [path, sleepWatch?.sleepWatch]);
+
+  useEffect(() => {
     if (path === "/login") return;
     let cancel = false;
     async function maybeRemind() {
-      if (cancel || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+      if (cancel || typeof Notification === "undefined" || Notification.permission !== "granted" || pushAlertsEnabled()) return;
+      const registration = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : undefined;
+      if (await registration?.pushManager.getSubscription()) return;
       const row = await db.settings.get("reminder");
-      if (!row?.reminderTime || !/^\d{2}:\d{2}$/.test(row.reminderTime)) return;
+      if (!row?.reminderTime) return;
+      const timeZone = localTimeZone();
       const now = new Date();
-      const [hh, mm] = row.reminderTime.split(":").map(Number);
-      const due = new Date(now);
-      due.setHours(hh, mm, 0, 0);
-      if (now < due) return;
-      const key = `clintrack-reminded-${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+      const decision = reminderDecision({
+        now,
+        timeZone,
+        reminderTime: row.reminderTime,
+        lastSentKey: null,
+        checkedInToday: await hasCheckedInToday(),
+      });
+      if (!decision.notify) return;
+      const key = `clintrack-reminded-${decision.dateKey || localDateKey(now, timeZone)}`;
       if (localStorage.getItem(key)) return;
       localStorage.setItem(key, "1");
-      const notice = new Notification("ClinTrack check-in", { body: "A minute for mood, sleep, and how the day went.", tag: "clintrack-checkin" });
+      const title = "Time to check in";
+      const body = "You have not checked in today. A minute for mood, sleep, and how the day went.";
+      if (registration) {
+        await registration.showNotification(title, { body, tag: "clintrack-checkin", icon: "/icon.svg", data: { url: "/" } });
+        return;
+      }
+      const notice = new Notification(title, { body, tag: "clintrack-checkin" });
       notice.onclick = () => {
         window.focus();
         if (window.location.pathname !== "/") {
@@ -75,9 +112,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
     void maybeRemind();
     const timer = window.setInterval(() => void maybeRemind(), 30000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void maybeRemind();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancel = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [path]);
 

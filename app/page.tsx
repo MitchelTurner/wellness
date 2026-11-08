@@ -1,8 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { deleteStoredCheckIn, saveCheckIn } from "@/lib/persist";
+import { isCheckInDue } from "@/lib/reminder-time";
+import { estimateSleep, type SleepEstimate } from "@/lib/sleep";
 import { AFFECT_TAGS, SOMATIC_TAGS, FUNCTIONAL_TAGS, type CheckIn, type SleepQuality } from "@/lib/types";
 import { toLocalInput } from "@/lib/analytics";
 import { useNowInput, Card, SliderField, TagSelect, Segmented, primaryBtn, secondaryBtn, inputCls, useToast, PageHeader, AcuteTrigger, quietDanger } from "@/components/ui";
@@ -63,6 +66,15 @@ function moodTone(mood: number) {
   return "text-ink";
 }
 
+function suggestionCopy(estimate: SleepEstimate) {
+  const from = clock(estimate.start);
+  const to = clock(estimate.end);
+  const length = hoursPhrase(estimate.hours);
+  const wakes = estimate.wakes === 0 ? "" : estimate.wakes === 1 ? " One brief wake." : ` ${estimate.wakes} brief wakes.`;
+  if (estimate.observed) return `Phone activity suggests ${length}, ${estimate.quality}. The screen was quiet from ${from} to ${to}.${wakes}`;
+  return `Phone activity suggests ${length}, ${estimate.quality}, from ${from} to ${to}, based on a long stretch with no activity in ClinTrack.${wakes}`;
+}
+
 function sleepTone(quality: SleepQuality) {
   if (quality === "Poor") return "text-rose";
   if (quality === "Good") return "text-forest";
@@ -97,6 +109,7 @@ export default function CheckInPage() {
   const [anxiety, setAnxiety] = useState(4);
   const [sleepHours, setSleepHours] = useState(7);
   const [sleepQuality, setSleepQuality] = useState<SleepQuality>("Fair");
+  const [sleepTouched, setSleepTouched] = useState(false);
   const [affect, setAffect] = useState<string[]>([]);
   const [somatic, setSomatic] = useState<string[]>([]);
   const [functional, setFunctional] = useState<string[]>([]);
@@ -121,6 +134,17 @@ export default function CheckInPage() {
     const rows = await db.checkIns.orderBy("timestamp").reverse().toArray();
     return rows.filter((row) => row.clientId);
   }, []);
+  const marks = useLiveQuery(async () => {
+    const since = Date.now() - 36 * 60 * 60 * 1000;
+    return db.activity.where("timestamp").above(since).toArray();
+  }, []);
+  const sleepOn = useLiveQuery(async () => (await db.settings.get("sleepWatch"))?.sleepWatch === true, []);
+  const reminderSetting = useLiveQuery(() => db.settings.get("reminder"), []);
+  const estimate = useMemo(() => (marks && now !== null ? estimateSleep(marks, now) : null), [marks, now]);
+  const suggested = !editing && !sleepTouched && estimate?.reliable ? estimate : null;
+  const shownHours = suggested ? suggested.hours : sleepHours;
+  const shownQuality = suggested ? suggested.quality : sleepQuality;
+  const checkInDue = now !== null && saved !== undefined && isCheckInDue(now, reminderSetting?.reminderTime, (saved ?? []).map((row) => row.timestamp));
 
   function resetForm() {
     setEditing(null);
@@ -132,11 +156,20 @@ export default function CheckInPage() {
     setAnxiety(4);
     setSleepHours(7);
     setSleepQuality("Fair");
+    setSleepTouched(false);
     setWhen(toLocalInput(Date.now()));
+  }
+
+  function applyEstimate() {
+    if (!estimate) return;
+    setSleepTouched(true);
+    setSleepHours(estimate.hours);
+    setSleepQuality(estimate.quality);
   }
 
   function load(row: CheckIn) {
     setEditing(row.clientId ?? null);
+    setSleepTouched(true);
     setMood(row.mood);
     setAnxiety(row.anxiety);
     setSleepHours(row.sleepHours);
@@ -173,8 +206,8 @@ export default function CheckInPage() {
         timestamp: Number.isNaN(ts) ? Date.now() : ts,
         mood,
         anxiety,
-        sleepHours,
-        sleepQuality,
+        sleepHours: shownHours,
+        sleepQuality: shownQuality,
         affect,
         somatic,
         functional,
@@ -190,12 +223,25 @@ export default function CheckInPage() {
   return (
     <>
       <PageHeader kicker={kicker} title="How are you now" lede="Mood, sleep, and what the day asked of you. A minute is enough." />
+      {checkInDue && <p className="mb-6 rounded-2xl bg-ink px-4 py-3 text-sm leading-relaxed text-cream">Time to check in. You have not saved one today.</p>}
       <AcuteTrigger href="/episodes?new=1" />
       <Card>
         <SliderField emphasis tone="bipolar" caption={MOOD_WORD[mood + 5]} label="Mood" value={mood} min={-5} max={5} onChange={setMood} hint={["Very low", "Very high"]} format={(v) => (v > 0 ? `+${v}` : `${v}`)} />
         <SliderField label="Anxiety" value={anxiety} min={1} max={10} onChange={setAnxiety} hint={["Calm", "Extreme"]} />
-        <SliderField label="Sleep" value={sleepHours} min={0} max={14} step={0.5} onChange={setSleepHours} format={(v) => `${v} h`} hint={["0 hours", "14 hours"]} />
-        <Segmented label="Sleep quality" options={["Poor", "Fair", "Good"] as const} value={sleepQuality} onChange={setSleepQuality} />
+        <SliderField label="Sleep" value={shownHours} min={0} max={14} step={0.5} onChange={(value) => { if (!sleepTouched && estimate?.reliable) setSleepQuality(estimate.quality); setSleepTouched(true); setSleepHours(value); }} format={(v) => `${v} h`} hint={["0 hours", "14 hours"]} />
+        <Segmented label="Sleep quality" options={["Poor", "Fair", "Good"] as const} value={shownQuality} onChange={(value) => { if (!sleepTouched && estimate?.reliable) setSleepHours(estimate.hours); setSleepTouched(true); setSleepQuality(value); }} />
+        {!editing && estimate && (
+          <div className="rounded-2xl bg-sand/60 px-4 py-3" role="status">
+            <p className="text-sm leading-relaxed text-ink">{suggestionCopy(estimate)}</p>
+            <button type="button" className={`${secondaryBtn} mt-3`} onClick={applyEstimate}>Use this sleep</button>
+          </div>
+        )}
+        {!editing && !estimate && sleepOn === true && <p className="text-xs leading-relaxed text-muted">Watching phone activity. A sleep guess shows up after a quiet night.</p>}
+        {!editing && !estimate && sleepOn === false && (
+          <p className="text-xs leading-relaxed text-muted">
+            Phone activity can fill this in. <Link href="/settings" className="font-medium text-ink underline decoration-line underline-offset-2">Turn it on in Settings</Link>.
+          </p>
+        )}
       </Card>
       <Card>
         {editing && <p className="mb-4 text-sm text-muted">Editing a saved check-in. Saving keeps the same record.</p>}

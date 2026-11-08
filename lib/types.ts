@@ -50,11 +50,20 @@ export interface Medication {
   dose: string;
 }
 
+export type ActivityKind = "input" | "active" | "unlocked" | "locked" | "still" | "moving";
+
+export interface ActivityMark {
+  id?: number;
+  timestamp: number;
+  kind: ActivityKind;
+}
+
 export interface Settings {
-  key: "profile" | "reminder";
+  key: "profile" | "reminder" | "sleepWatch";
   patientName?: string;
   medications?: Medication[];
   reminderTime?: string;
+  sleepWatch?: boolean;
 }
 
 export const AFFECT_TAGS = [

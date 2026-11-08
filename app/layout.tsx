@@ -20,6 +20,7 @@ export const metadata: Metadata = {
   description: "Track mood, symptoms and functional impact, and share a clear clinical summary with your doctor.",
   manifest: "/manifest.webmanifest",
   icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  appleWebApp: { capable: true, title: "ClinTrack", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = { themeColor: "#f4f1ea", width: "device-width", initialScale: 1 };
