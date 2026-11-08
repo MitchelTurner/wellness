@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { DatabaseSync } from "node:sqlite";
+import { localDateKey } from "./reminder-time";
 import type { CheckInRecord, EpisodeRecord, ProfileRecord, ScreeningRecord } from "./records";
 
 let database: DatabaseSync | null = null;
@@ -59,6 +60,19 @@ function db() {
         user_id INTEGER PRIMARY KEY,
         patient_name TEXT NOT NULL,
         medications TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS reminders (
+        user_id INTEGER PRIMARY KEY,
+        reminder_time TEXT NOT NULL,
+        time_zone TEXT NOT NULL,
+        last_sent_key TEXT
+      );
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        endpoint TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at INTEGER NOT NULL
       );
     `);
     ensureColumn("check_ins", "user_id", "ALTER TABLE check_ins ADD COLUMN user_id INTEGER");
@@ -279,4 +293,87 @@ export function getProfileRow(userId: number): ProfileRecord | null {
 
 export function deleteProfileRow(userId: number) {
   db().prepare("DELETE FROM profiles WHERE user_id = ?").run(userId);
+}
+
+export interface ReminderRow {
+  userId: number;
+  reminderTime: string;
+  timeZone: string;
+  lastSentKey: string | null;
+}
+
+export function upsertReminder(userId: number, reminderTime: string, timeZone: string) {
+  db().prepare(`
+    INSERT INTO reminders (user_id, reminder_time, time_zone, last_sent_key)
+    VALUES (?, ?, ?, NULL)
+    ON CONFLICT(user_id) DO UPDATE SET
+      reminder_time = excluded.reminder_time,
+      time_zone = excluded.time_zone
+  `).run(userId, reminderTime, timeZone);
+}
+
+export function getReminder(userId: number): ReminderRow | null {
+  const row = db().prepare("SELECT user_id, reminder_time, time_zone, last_sent_key FROM reminders WHERE user_id = ?").get(userId) as
+    | { user_id: number; reminder_time: string; time_zone: string; last_sent_key: string | null }
+    | undefined;
+  if (!row) return null;
+  return { userId: Number(row.user_id), reminderTime: String(row.reminder_time), timeZone: String(row.time_zone), lastSentKey: row.last_sent_key ? String(row.last_sent_key) : null };
+}
+
+export function deleteReminder(userId: number) {
+  db().prepare("DELETE FROM reminders WHERE user_id = ?").run(userId);
+}
+
+export function listReminders(): ReminderRow[] {
+  const rows = db().prepare("SELECT user_id, reminder_time, time_zone, last_sent_key FROM reminders").all() as { user_id: number; reminder_time: string; time_zone: string; last_sent_key: string | null }[];
+  return rows.map((row) => ({
+    userId: Number(row.user_id),
+    reminderTime: String(row.reminder_time),
+    timeZone: String(row.time_zone),
+    lastSentKey: row.last_sent_key ? String(row.last_sent_key) : null,
+  }));
+}
+
+export function claimReminder(userId: number, dateKey: string) {
+  const result = db().prepare("UPDATE reminders SET last_sent_key = ? WHERE user_id = ? AND IFNULL(last_sent_key, '') != ?").run(dateKey, userId, dateKey);
+  return result.changes > 0;
+}
+
+export function releaseReminder(userId: number, dateKey: string) {
+  db().prepare("UPDATE reminders SET last_sent_key = NULL WHERE user_id = ? AND last_sent_key = ?").run(userId, dateKey);
+}
+
+export function hasCheckInOnDate(userId: number, timeZone: string, now = new Date()) {
+  const dateKey = localDateKey(now, timeZone);
+  const rows = db().prepare("SELECT timestamp FROM check_ins WHERE user_id = ? AND timestamp >= ?").all(userId, now.getTime() - 3 * 86400000) as { timestamp: number }[];
+  return rows.some((row) => localDateKey(new Date(Number(row.timestamp)), timeZone) === dateKey);
+}
+
+export function savePushSubscription(userId: number, sub: { endpoint: string; p256dh: string; auth: string }) {
+  db().prepare(`
+    INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth, created_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(endpoint) DO UPDATE SET
+      user_id = excluded.user_id,
+      p256dh = excluded.p256dh,
+      auth = excluded.auth
+  `).run(sub.endpoint, userId, sub.p256dh, sub.auth, Date.now());
+}
+
+export function deletePushSubscription(userId: number, endpoint: string) {
+  db().prepare("DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?").run(userId, endpoint);
+}
+
+export function deleteAllPushSubscriptions(userId: number) {
+  db().prepare("DELETE FROM push_subscriptions WHERE user_id = ?").run(userId);
+}
+
+export function listPushSubscriptions(userId: number) {
+  const rows = db().prepare("SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?").all(userId) as { endpoint: string; p256dh: string; auth: string }[];
+  return rows.map((row) => ({ endpoint: String(row.endpoint), p256dh: String(row.p256dh), auth: String(row.auth) }));
+}
+
+export function countPushSubscriptions(userId: number) {
+  const row = db().prepare("SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?").get(userId) as { n: number };
+  return Number(row.n);
 }

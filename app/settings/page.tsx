@@ -1,8 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { clearReminder, syncReminder } from "@/lib/client-reminder";
 import { db, clearAll, exportAll, getPatientName, importAll } from "@/lib/db";
 import { clearServerRecords, pushOwnedRecords, saveProfile, signOut } from "@/lib/persist";
+import { formatReminderTime, isPastReminderTime, localTimeZone } from "@/lib/reminder-time";
+import { requestSleepPermissions } from "@/lib/sleep-watch";
 import type { Medication } from "@/lib/types";
 import { Card, primaryBtn, secondaryBtn, dangerBtn, inputCls, useToast, PageHeader, quietDanger } from "@/components/ui";
 
@@ -13,6 +16,10 @@ export default function SettingsPage() {
   const shown = name ?? stored?.patientName ?? "";
   const [remind, setRemind] = useState<string | null>(null);
   const shownRemind = remind ?? storedReminder?.reminderTime ?? "";
+  const storedSleep = useLiveQuery(() => db.settings.get("sleepWatch"), []);
+  const sleepOn = storedSleep?.sleepWatch === true;
+  const [sleepBusy, setSleepBusy] = useState(false);
+  const [background, setBackground] = useState<boolean | null>(null);
   const [toast, toastEl] = useToast();
   const [account, setAccount] = useState("");
   const [currentPw, setCurrentPw] = useState("");
@@ -23,6 +30,9 @@ export default function SettingsPage() {
   const file = useRef<HTMLInputElement>(null);
   useEffect(() => {
     fetch("/api/auth/session").then((res) => res.json()).then((data: { user: { username: string } | null }) => setAccount(data.user?.username ?? ""));
+    fetch("/api/reminder").then((res) => (res.ok ? res.json() : null)).then((data: { devices?: number } | null) => {
+      if (data) setBackground((data.devices ?? 0) > 0);
+    }).catch(() => {});
   }, []);
 
   const medications = stored?.medications ?? [];
@@ -68,6 +78,8 @@ export default function SettingsPage() {
     if (!shownRemind) {
       await db.settings.delete("reminder");
       setRemind("");
+      await clearReminder();
+      setBackground(false);
       toast("Reminder turned off");
       return;
     }
@@ -81,7 +93,35 @@ export default function SettingsPage() {
       return;
     }
     await db.settings.put({ key: "reminder", reminderTime: shownRemind });
-    toast("Daily reminder saved");
+    const result = await syncReminder(shownRemind);
+    setBackground(result.push);
+    const label = formatReminderTime(shownRemind);
+    if (!result.saved) {
+      toast("Saved on this device. Background alerts could not be registered.");
+      return;
+    }
+    if (result.push && isPastReminderTime(new Date(), localTimeZone(), shownRemind)) {
+      toast("Reminder saved. You'll be notified now if you have not checked in today.");
+      return;
+    }
+    toast(result.push ? `Reminder saved for ${label}.` : "Reminder saved. It will show while ClinTrack is open.");
+  }
+
+  async function toggleSleep() {
+    if (sleepOn) {
+      await db.settings.put({ key: "sleepWatch", sleepWatch: false });
+      toast("Sleep tracking is off");
+      return;
+    }
+    setSleepBusy(true);
+    try {
+      const permissions = await requestSleepPermissions();
+      await db.settings.put({ key: "sleepWatch", sleepWatch: true });
+      const watching = permissions.screen === "granted" || permissions.movement === "granted";
+      toast(watching ? "Sleep tracking is on. Quiet stretches on this phone will be noted." : "Sleep tracking is on. Long gaps in phone activity will be used.");
+    } finally {
+      setSleepBusy(false);
+    }
   }
 
   async function doExport() {
@@ -145,10 +185,19 @@ export default function SettingsPage() {
         <button className={primaryBtn} onClick={addMed} disabled={!medName.trim() || medications.length >= 30}>Add medication</button>
       </Card>
       <Card title="Daily reminder">
-        <p className="mb-4 text-sm leading-relaxed text-muted">Asks once a day while this tab is open, then opens the check-in page. Nothing is emailed, and there is no push server.</p>
+        <p className="mb-4 text-sm leading-relaxed text-muted">Sends a notification at this time if you have not checked in yet today. It only says it is time to check in. With notifications allowed, that can arrive while ClinTrack is closed. On iPhone, add ClinTrack to your Home Screen first.</p>
         <label htmlFor="remind" className="mb-2 block text-[13px] font-medium text-muted">Time</label>
         <input id="remind" type="time" className={`${inputCls} mb-4`} value={shownRemind} onChange={(e) => setRemind(e.target.value)} />
         <button className={primaryBtn} onClick={saveReminder}>{shownRemind ? "Save reminder" : "Turn reminder off"}</button>
+        {shownRemind && background === true && <p className="mt-3 text-sm leading-relaxed text-muted">This browser can receive the reminder while ClinTrack is closed.</p>}
+        {shownRemind && background === false && <p className="mt-3 text-sm leading-relaxed text-muted">This browser will show the reminder while ClinTrack is open.</p>}
+      </Card>
+      <Card title="Sleep from phone activity">
+        <p className="mb-4 text-sm leading-relaxed text-muted">ClinTrack can guess last night from this phone: a locked screen, a phone sitting still, or a long stretch with no activity in the app. The guess stays on this device until you save a check-in, and you can change the hours before you save. It is not a medical sleep measure, and it is not included in the JSON backup.</p>
+        <button className={sleepOn ? secondaryBtn : primaryBtn} onClick={toggleSleep} disabled={sleepBusy} aria-pressed={sleepOn}>
+          {sleepBusy ? "Starting…" : sleepOn ? "Turn sleep tracking off" : "Turn sleep tracking on"}
+        </button>
+        {sleepOn && <p className="mt-3 text-sm leading-relaxed text-muted">On. Quiet stretches on this phone are being noted for the next check-in.</p>}
       </Card>
       <Card title="Backup">
         <p className="mb-4 text-sm leading-relaxed text-muted">Export a JSON file, or restore one. Restoring replaces the data on this device and replaces the account records in the app database.</p>
@@ -158,7 +207,7 @@ export default function SettingsPage() {
           <button className={secondaryBtn} onClick={() => file.current?.click()}>Import JSON</button>
           <button
             className={dangerBtn}
-            onClick={async () => { if (confirm("Delete all data on this device, including the records stored with this account?")) { await clearAll(); await clearServerRecords(); setName(""); toast("All data deleted"); } }}
+            onClick={async () => { if (confirm("Delete all data on this device, including the records stored with this account?")) { await clearAll(); await clearServerRecords(); localStorage.removeItem("clintrack-push"); setName(""); setRemind(""); setBackground(false); toast("All data deleted"); } }}
           >
             Delete all data
           </button>
